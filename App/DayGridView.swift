@@ -27,16 +27,9 @@ struct DayGridView: View {
     /// ユーザーが開いた側。日を変えたら畳み直す。
     @State private var expanded: Set<DayGridAxis.Edge> = []
     @State private var now = Date.now
-    /// ドラッグ中の項目と移動量。項目側のジェスチャが中断されて 0 に戻れば nil になる
-    @State private var dragging: Dragging?
     /// 繰り返し予定を落としたあと、範囲を聞いている間の保留。確定するまで落とした位置に置いたままにする
     @State private var pendingMove: PendingMove?
     private let clock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
-
-    private struct Dragging {
-        let placement: GridPlacement
-        let translation: CGFloat
-    }
 
     private struct PendingMove: Identifiable {
         let item: TimelineItem
@@ -71,7 +64,6 @@ struct DayGridView: View {
                     if isToday {
                         nowIndicator(axis)
                     }
-                    dragTimeLabel(axis)
                 }
                 .frame(height: axis.totalHeight)
                 .padding(.vertical, 8)
@@ -118,36 +110,10 @@ struct DayGridView: View {
         }
     }
 
-    /// ドラッグ中・確認待ちの項目を本来の位置からずらす量。
-    private func dragOffset(for placement: GridPlacement, axis: DayGridAxis) -> CGFloat {
-        if let dragging, dragging.placement.id == placement.id {
-            return dragging.translation
-        }
-        if let pendingMove, pendingMove.id == placement.id {
-            return axis.y(forMinute: pendingMove.minute) - axis.y(forMinute: placement.startMinute)
-        }
-        return 0
-    }
-
-    /// ドラッグ中の落とし先の時刻。目盛りの列に、ブロックの上端と揃えて出す。
-    private func dragTimeLabel(_ axis: DayGridAxis) -> some View {
-        Group {
-            if let dragging {
-                let minute = dropMinute(for: dragging.placement, translation: dragging.translation, axis: axis)
-                Text(Self.timeText(minute: minute))
-                    .font(.caption2.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.tint)
-                    .frame(width: labelWidth - 6, alignment: .trailing)
-                    .padding(.vertical, 1)
-                    .background(.background)
-                    .offset(y: axis.y(forMinute: dragging.placement.startMinute) + dragging.translation - 7)
-            }
-        }
-        .allowsHitTesting(false)
-    }
-
-    private static func timeText(minute: Int) -> String {
-        String(format: "%d:%02d", minute / 60, minute % 60)
+    /// 確認待ちの項目を落とした位置に置いておくためのずらし量。
+    private func pendingOffset(for placement: GridPlacement, axis: DayGridAxis) -> CGFloat {
+        guard let pendingMove, pendingMove.id == placement.id else { return 0 }
+        return axis.y(forMinute: pendingMove.minute) - axis.y(forMinute: placement.startMinute)
     }
 
     private func hourLines(_ axis: DayGridAxis) -> some View {
@@ -196,30 +162,25 @@ struct DayGridView: View {
         let gridWidth = max(0, availableWidth - labelWidth - trailingInset)
         return ForEach(placements) { placement in
             let columnWidth = gridWidth / CGFloat(max(1, placement.columnCount))
-            let lifted = dragOffset(for: placement, axis: axis)
+            let x = labelWidth + columnWidth * CGFloat(placement.column)
+            let pending = pendingOffset(for: placement, axis: axis)
             GridItemView(
                 placement: placement,
                 editing: editing,
+                labelColumnWidth: labelWidth - 6,
+                distanceToGridLeft: x,
                 onToggle: { onToggle(placement.item) },
-                onDragChanged: { translation in
-                    dragging = translation == 0 ? nil : Dragging(placement: placement, translation: translation)
-                },
-                onDragEnded: { translation in
-                    dragging = nil
-                    requestMove(placement, to: dropMinute(for: placement, translation: translation, axis: axis))
-                }
+                dropMinute: { translation in dropMinute(for: placement, translation: translation, axis: axis) },
+                onDrop: { minute in requestMove(placement, to: minute) }
             )
                 .frame(
                     width: max(0, columnWidth - 2),
                     height: max(18, axis.height(fromMinute: placement.startMinute, to: placement.endMinute) - 1),
                     alignment: .topLeading
                 )
-                .opacity(lifted == 0 ? 1 : 0.85)
-                .zIndex(lifted == 0 ? 0 : 1)
-                .offset(
-                    x: labelWidth + columnWidth * CGFloat(placement.column),
-                    y: axis.y(forMinute: placement.startMinute) + lifted
-                )
+                .opacity(pending == 0 ? 1 : 0.85)
+                .zIndex(pending == 0 ? 0 : 1)
+                .offset(x: x, y: axis.y(forMinute: placement.startMinute) + pending)
         }
     }
 
@@ -258,25 +219,43 @@ struct DayGridView: View {
 
 /// グリッド上の 1 項目。予定はカレンダー色のブロック、リマインダーはチェック付きの行。
 /// 上下にドラッグすると時刻を変える（Mac はそのまま、iPhone は長押ししてから）。
-/// 位置のずらしとラベルは親が描く。ここは移動量を通知するだけ。
+/// ドラッグ中のずらしと時刻ラベルはこの中で描く。親の状態を毎フレーム更新するとグリッド全体が描き直されてちらつくため。
 private struct GridItemView: View {
     let placement: GridPlacement
     let editing: ItemEditing
+    /// 目盛りの列の幅と、この項目の左端からグリッド左端までの距離。ドラッグ中の時刻をその列に出すのに使う
+    let labelColumnWidth: CGFloat
+    let distanceToGridLeft: CGFloat
     let onToggle: () -> Void
-    /// 移動量（pt）。ジェスチャが中断されると 0 で呼ばれる
-    let onDragChanged: (CGFloat) -> Void
-    let onDragEnded: (CGFloat) -> Void
+    /// 移動量（pt）から落とし先の開始分を求める
+    let dropMinute: (CGFloat) -> Int
+    let onDrop: (Int) -> Void
 
     /// `@GestureState` はジェスチャが中断（スクロール開始・ウィンドウ切替）されても自動で 0 に戻る
     @GestureState private var translation: CGFloat = 0
 
     private var item: TimelineItem { placement.item }
     private var color: Color { Color(cgColor: item.color) }
+    private var isDragging: Bool { translation != 0 }
 
     var body: some View {
         content
+            .opacity(isDragging ? 0.85 : 1)
+            .overlay(alignment: .topLeading) {
+                if isDragging {
+                    Text(Self.timeText(minute: dropMinute(translation)))
+                        .font(.caption2.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.tint)
+                        .frame(width: labelColumnWidth, alignment: .trailing)
+                        .padding(.vertical, 1)
+                        .background(.background)
+                        .offset(x: -distanceToGridLeft, y: -7)
+                        .allowsHitTesting(false)
+                }
+            }
+            .offset(y: translation)
+            .zIndex(isDragging ? 1 : 0)
             .gesture(item.isEditable ? moveGesture : nil)
-            .onChange(of: translation) { _, new in onDragChanged(new) }
     }
 
     @ViewBuilder
@@ -348,7 +327,7 @@ private struct GridItemView: View {
             }
             .onEnded { value in
                 if case .second(true, let drag?) = value {
-                    onDragEnded(drag.translation.height)
+                    onDrop(dropMinute(drag.translation.height))
                 }
             }
     }
@@ -356,7 +335,11 @@ private struct GridItemView: View {
     private var moveGesture: some Gesture {
         DragGesture(minimumDistance: 6)
             .updating($translation) { value, state, _ in state = value.translation.height }
-            .onEnded { value in onDragEnded(value.translation.height) }
+            .onEnded { value in onDrop(dropMinute(value.translation.height)) }
     }
     #endif
+
+    private static func timeText(minute: Int) -> String {
+        String(format: "%d:%02d", minute / 60, minute % 60)
+    }
 }
