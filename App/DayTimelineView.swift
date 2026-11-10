@@ -89,7 +89,8 @@ struct DayTimelineView: View {
                 Divider()
             }
             if !model.timeline.overdue.isEmpty {
-                PinnedSection(title: "期限切れ") {
+                // 1 行およそ 40pt。多くても 3 行半で止めて残りはスクロール
+                PinnedSection(title: "期限切れ", scrollHeight: min(CGFloat(model.timeline.overdue.count) * 40, 140)) {
                     ForEach(model.timeline.overdue) { row($0, isOverdue: true) }
                 }
                 Divider()
@@ -123,9 +124,11 @@ struct DayTimelineView: View {
     }
 }
 
-/// グリッドの上に固定する小さなセクション。行数が多いときだけ内部でスクロールする。
+/// グリッドの上に固定する小さなセクション。
+/// `scrollHeight` を渡すと行数に応じた高さ（上限あり）で内部スクロールする。渡さなければ中身の高さそのまま。
 private struct PinnedSection<Content: View>: View {
     let title: String
+    var scrollHeight: CGFloat?
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -133,17 +136,22 @@ private struct PinnedSection<Content: View>: View {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
-                    content
+            if let scrollHeight {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        content
+                    }
+                    // ScrollView は中身が狭いと中央に寄せるので、左端に固定する
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                // ScrollView は中身が狭いと中央に寄せるので、左端に固定する
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: scrollHeight)
+            } else {
+                content
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxHeight: 140)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
     }
 }
