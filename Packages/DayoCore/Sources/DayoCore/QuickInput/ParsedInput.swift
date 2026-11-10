@@ -77,7 +77,7 @@ public struct ParsedInput: Equatable {
     /// 「10時-11時」の終了側。event のときだけ意味を持つ。
     public var endTime: DateComponents?
     public var recurrence: RecurrenceSpec?
-    /// `#家族` → "家族"。
+    /// 保存先。リマインダーは `#家族` → "家族"、予定は `@個人的` → "個人的"。nil なら既定。
     public var listName: String?
 
     public init(

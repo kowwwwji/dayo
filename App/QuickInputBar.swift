@@ -12,7 +12,7 @@ struct QuickInputBar: View {
                 Image(systemName: "plus.circle")
                     .foregroundStyle(.secondary)
                 // 送信中も disabled にしない。フォーカスが外れて連続入力できなくなるため
-                TextField("例: 明日 15時 歯医者 #家族", text: Bindable(model).text)
+                TextField("例: 明日 15時 歯医者 #家族 ／ 金曜 10時-11時 面談 @個人的", text: Bindable(model).text)
                     .textFieldStyle(.plain)
                     .focused($isFocused)
                     .onSubmit { Task { await model.submit() } }
@@ -49,7 +49,7 @@ struct QuickInputBar: View {
                     Chip(text: Self.timeText(time, end: parsed.endTime), symbol: "clock")
                 }
                 if let list = parsed.listName {
-                    Chip(text: list, symbol: "list.bullet")
+                    Chip(text: list, symbol: parsed.kind == .event ? "calendar.badge.plus" : "list.bullet")
                 }
             }
         }

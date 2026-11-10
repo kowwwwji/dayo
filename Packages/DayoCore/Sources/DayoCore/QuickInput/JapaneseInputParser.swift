@@ -29,8 +29,12 @@ public struct JapaneseInputParser: InputParser {
         if let list = cursor.take(Pattern.list) {
             result.listName = list.group(1)
         }
-        if cursor.take(Pattern.eventMarker) != nil {
+        if let marker = cursor.take(Pattern.eventMarker) {
             result.kind = .event
+            // 「@予定」は既定カレンダーへ。それ以外の「@個人的」はカレンダー名の指定
+            if let name = marker.group(1), name != "予定" {
+                result.listName = name
+            }
         }
         result.recurrence = Self.takeRecurrence(&cursor)
         if let range = Self.takeTimeRange(&cursor) {
@@ -277,7 +281,7 @@ public struct JapaneseInputParser: InputParser {
         static let dayOfMonth = regex("(?<![\\d月])(\\d{1,2})日(?![\\d後ご間目中])(?:に)?")
 
         static let list = regex("#(\\S+)")
-        static let eventMarker = regex("@予定")
+        static let eventMarker = regex("@(\\S+)")
 
         private static func regex(_ pattern: String) -> NSRegularExpression {
             // パターンは定数なので失敗は実装ミス

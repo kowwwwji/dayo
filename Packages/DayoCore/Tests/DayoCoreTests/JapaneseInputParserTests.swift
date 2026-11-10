@@ -75,6 +75,8 @@ private func parse(_ text: String) -> ParsedInput {
         // リスト・種別・タイトル
         ("買い物 #仕事 牛乳", ParsedInput(title: "買い物 牛乳", listName: "仕事")),
         ("21時 電話 @予定", ParsedInput(title: "電話", kind: .event, time: hm(21))),
+        ("金曜 面談 @個人的", ParsedInput(title: "面談", kind: .event, date: ymd(2026, 11, 13), listName: "個人的")),
+        ("10時-11時 面談 @仕事", ParsedInput(title: "面談", kind: .event, time: hm(10), endTime: hm(11), listName: "仕事")),
         ("夜景を見に行く", ParsedInput(title: "夜景を見に行く")),
         ("  空白   整理  ", ParsedInput(title: "空白 整理")),
         // 助詞・接尾辞
