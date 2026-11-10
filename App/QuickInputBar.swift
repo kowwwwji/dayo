@@ -6,6 +6,9 @@ struct QuickInputBar: View {
     let model: QuickInputModel
     @FocusState private var isFocused: Bool
 
+    /// Shift+Tab は Tab に shift が付くのではなく、この制御文字（逆 Tab）として届く。
+    private static let backTab = KeyEquivalent("\u{19}")
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
@@ -21,9 +24,9 @@ struct QuickInputBar: View {
                         Task { await model.submit() }
                     }
                     // Tab / Shift+Tab: 候補が出ている間はフォーカス移動ではなく候補の選択に使う
-                    .onKeyPress(keys: [.tab]) { press in
+                    .onKeyPress(keys: [.tab, Self.backTab]) { press in
                         guard !model.suggestions.isEmpty else { return .ignored }
-                        if press.modifiers.contains(.shift) {
+                        if press.key == Self.backTab || press.modifiers.contains(.shift) {
                             model.selectPreviousSuggestion()
                         } else {
                             model.selectNextSuggestion()
