@@ -13,6 +13,12 @@ public final class DayTimelineModel {
     public private(set) var placements: [GridPlacement] = []
     /// 一度でも読み込みに成功したか。空表示を出す前の判定に使う。
     public private(set) var hasLoaded = false
+    /// 最後に読み込みが完了した日。`day` と一致していればいま表示中の日の内容が揃っている。
+    public private(set) var loadedDay: Date?
+
+    /// 表示中の日の内容が読み込み済みか。グリッドの初期スクロールはこれを待ってから行う
+    /// （前の日の内容で帯の有無を決めると、読み込み後に位置がずれる）。
+    public var isLoadedForDay: Bool { loadedDay == day }
     public private(set) var errorMessage: String?
 
     private let source: CalendarSource
@@ -73,6 +79,7 @@ public final class DayTimelineModel {
             timeline = DayTimeline(items: snapshot.items, overdue: snapshot.overdue)
             placements = DayGridLayout.place(timeline.timed, in: range)
             hasLoaded = true
+            loadedDay = day
             errorMessage = nil
         } catch {
             guard generation == loadGeneration else { return }
