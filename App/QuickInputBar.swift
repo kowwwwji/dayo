@@ -94,7 +94,7 @@ struct QuickInputBar: View {
                 Chip(text: parsed.kind == .event ? "予定" : "リマインダー",
                      symbol: parsed.kind == .event ? "calendar" : "checklist")
                 if let recurrence = parsed.recurrence {
-                    Chip(text: RecurrenceText.describe(recurrence), symbol: "repeat")
+                    Chip(text: recurrence.localizedDescription, symbol: "repeat")
                 }
                 if let date = parsed.date {
                     Chip(text: Self.dateText(date), symbol: "calendar.badge.clock")
@@ -131,29 +131,5 @@ private struct Chip: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(.quaternary, in: Capsule())
-    }
-}
-
-/// 繰り返し規則の日本語表現。
-enum RecurrenceText {
-    private static let weekdayNames = ["", "日", "月", "火", "水", "木", "金", "土"]
-
-    static func describe(_ spec: RecurrenceSpec) -> String {
-        switch spec.frequency {
-        case .daily:
-            return spec.interval == 1 ? "毎日" : "\(spec.interval)日ごと"
-        case .weekly:
-            let days = spec.weekdays.map { weekdayNames[$0] }.joined()
-            if spec.weekdays == [2, 3, 4, 5, 6] { return "平日" }
-            let prefix = spec.interval == 2 ? "隔週" : "毎週"
-            return days.isEmpty ? prefix : "\(prefix)\(days)曜"
-        case .monthly:
-            if !spec.daysOfMonth.isEmpty {
-                return "毎月" + spec.daysOfMonth.map { "\($0)日" }.joined(separator: "・")
-            }
-            guard let weekday = spec.weekdays.first, let week = spec.weekOfMonth else { return "毎月" }
-            let ordinal = week == -1 ? "最終" : "第\(week)"
-            return "毎月\(ordinal)\(weekdayNames[weekday])曜"
-        }
     }
 }

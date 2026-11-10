@@ -6,6 +6,7 @@ import SwiftUI
 struct RootView: View {
     let model: DayTimelineModel
     let quickInput: QuickInputModel
+    let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
 
     var body: some View {
         #if os(macOS)
@@ -19,12 +20,12 @@ struct RootView: View {
             VStack(spacing: 0) {
                 QuickInputBar(model: quickInput)
                 Divider()
-                DayTimelineView(model: model)
+                DayTimelineView(model: model, makeEditor: makeEditor)
             }
         }
         #else
         TabView {
-            DayTimelineView(model: model)
+            DayTimelineView(model: model, makeEditor: makeEditor)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     VStack(spacing: 0) {
                         Divider()

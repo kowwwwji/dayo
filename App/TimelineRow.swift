@@ -5,15 +5,20 @@ import SwiftUI
 struct TimelineRow: View {
     let item: TimelineItem
     var isOverdue = false
+    let editing: ItemEditing
     let onToggle: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
             leading
+            // チェック以外の部分をタップで詳細編集
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .strikethrough(item.isCompleted)
-                    .foregroundStyle(item.isCompleted ? .secondary : .primary)
+                HStack(spacing: 4) {
+                    PriorityMark(priority: item.priority)
+                    Text(item.title)
+                        .strikethrough(item.isCompleted)
+                        .foregroundStyle(item.isCompleted ? .secondary : .primary)
+                }
                 HStack(spacing: 6) {
                     if let time = timeText {
                         Text(time).foregroundStyle(isOverdue ? .red : .secondary)
@@ -22,6 +27,10 @@ struct TimelineRow: View {
                 }
                 .font(.caption)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture { editing.open(item) }
+            .itemEditor(for: item, editing)
         }
         .padding(.vertical, 2)
     }

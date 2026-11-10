@@ -4,6 +4,7 @@ import SwiftUI
 /// 終日予定・期日のみのリマインダーを表す小さなチップ。グリッドの上に左から並べる。
 struct AllDayChip: View {
     let item: TimelineItem
+    let editing: ItemEditing
     let onToggle: () -> Void
 
     private var color: Color { Color(cgColor: item.color) }
@@ -23,6 +24,8 @@ struct AllDayChip: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(item.isCompleted ? "未完了に戻す" : "完了にする")
             }
+            PriorityMark(priority: item.priority)
+                .font(.caption)
             Text(item.title)
                 .font(.caption)
                 .lineLimit(1)
@@ -32,6 +35,23 @@ struct AllDayChip: View {
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
         .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
+        // チップ全体をタップで編集（チェックのボタンはボタンが先に取る）
+        .contentShape(Rectangle())
+        .onTapGesture { editing.open(item) }
+        .itemEditor(for: item, editing)
+    }
+}
+
+/// 優先度の「!」。純正アプリと同じくアクセント色で、なしのときは何も出さない。
+struct PriorityMark: View {
+    let priority: ReminderPriority
+
+    var body: some View {
+        if priority != .none {
+            Text(priority.marker)
+                .fontWeight(.semibold)
+                .foregroundStyle(.tint)
+        }
     }
 }
 

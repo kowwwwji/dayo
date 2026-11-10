@@ -1,0 +1,186 @@
+import DayoCore
+import SwiftUI
+
+/// 項目をタップしたときにエディタを開くための配線。
+/// 開いているエディタは 1 つで、どの項目の上に出すかは `item.id` で判定する。
+struct ItemEditing {
+    @Binding var editor: ItemEditorModel?
+    let make: @MainActor (TimelineItem) -> ItemEditorModel
+
+    @MainActor func open(_ item: TimelineItem) {
+        editor = make(item)
+    }
+
+    func isPresented(for item: TimelineItem) -> Binding<Bool> {
+        Binding(
+            get: { editor?.item.id == item.id },
+            set: { if !$0, editor?.item.id == item.id { editor = nil } }
+        )
+    }
+}
+
+extension View {
+    /// Mac はその項目に付いたポップオーバー、iPhone はシートでエディタを出す。
+    func itemEditor(for item: TimelineItem, _ editing: ItemEditing) -> some View {
+        modifier(ItemEditorPresenter(item: item, editing: editing))
+    }
+}
+
+private struct ItemEditorPresenter: ViewModifier {
+    let item: TimelineItem
+    let editing: ItemEditing
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        content.popover(isPresented: editing.isPresented(for: item), arrowEdge: .trailing) {
+            if let editor = editing.editor {
+                ItemEditorView(model: editor)
+            }
+        }
+        #else
+        content.sheet(isPresented: editing.isPresented(for: item)) {
+            if let editor = editing.editor {
+                NavigationStack { ItemEditorView(model: editor) }
+            }
+        }
+        #endif
+    }
+}
+
+/// 詳細編集。タイトル・日時・繰り返し・保存先・メモを直し、削除もここから。
+struct ItemEditorView: View {
+    @Bindable var model: ItemEditorModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var pendingAction: PendingAction?
+    @State private var confirmsDelete = false
+
+    private enum PendingAction { case save, delete }
+
+    private var isEvent: Bool { model.item.kind == .event }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Form {
+                TextField("タイトル", text: $model.title)
+                if !isEvent {
+                    Toggle("期日", isOn: $model.hasDate)
+                }
+                if isEvent || model.hasDate {
+                    Toggle(isEvent ? "終日" : "時刻なし", isOn: $model.isAllDay)
+                    // 開始と終了は 1 行にまとめ、間に区切り線を入れない
+                    VStack(alignment: .leading, spacing: 8) {
+                        DatePicker(isEvent ? "開始" : "期日", selection: $model.start, displayedComponents: dateComponents)
+                        if isEvent {
+                            DatePicker("終了", selection: $model.end, displayedComponents: dateComponents)
+                        }
+                    }
+                }
+                if !isEvent {
+                    Picker("優先度", selection: $model.priority) {
+                        ForEach(ReminderPriority.allCases, id: \.self) { priority in
+                            Text(priority.label).tag(priority)
+                        }
+                    }
+                }
+                Picker("繰り返し", selection: $model.recurrence) {
+                    ForEach(model.recurrenceOptions, id: \.self) { option in
+                        Text(model.label(for: option)).tag(option)
+                    }
+                }
+                .disabled(model.recurrence == .unsupported)
+                Picker(isEvent ? "カレンダー" : "リスト", selection: $model.destinationID) {
+                    // 一覧の読み込み前や書き込み不可の保存先でも、今の保存先を選択肢に残す
+                    if !model.destinations.contains(where: { $0.id == model.item.calendarIdentifier }) {
+                        Text(model.item.sourceName).tag(model.item.calendarIdentifier)
+                    }
+                    ForEach(model.destinations) { destination in
+                        Text(destination.name).tag(destination.id)
+                    }
+                }
+                Section("メモ") {
+                    TextEditor(text: $model.notes)
+                        .frame(minHeight: 60)
+                }
+                if !model.item.isEditable {
+                    Text("このカレンダーは読み取り専用です（誕生日・祝日・購読など）")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let message = model.errorMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+            .formStyle(.grouped)
+            .disabled(!model.item.isEditable)
+            Divider()
+            HStack {
+                Button("削除", role: .destructive) { trigger(.delete) }
+                    .disabled(!model.item.isEditable || model.isSaving)
+                Spacer()
+                Button("キャンセル") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("保存") { trigger(.save) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!model.item.isEditable || model.isSaving)
+            }
+            .padding()
+        }
+        // 開始を動かしたら長さを保って終了も動かす
+        .onChange(of: model.start) { old, new in
+            guard isEvent else { return }
+            model.end = model.end.addingTimeInterval(new.timeIntervalSince(old))
+        }
+        .confirmationDialog("「\(model.item.title)」を削除しますか？", isPresented: $confirmsDelete, titleVisibility: .visible) {
+            Button("削除", role: .destructive) { run(.delete, span: .thisOccurrence) }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("純正アプリと共有相手からも消えます。")
+        }
+        #if os(macOS)
+        .frame(width: 380, height: 480)
+        #endif
+        .task { await model.loadDestinations() }
+        .confirmationDialog(
+            "繰り返しの予定です",
+            isPresented: Binding(
+                get: { pendingAction != nil },
+                set: { if !$0 { pendingAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("この回のみ") { run(pendingAction, span: .thisOccurrence) }
+            Button("以降すべて") { run(pendingAction, span: .futureOccurrences) }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text(pendingAction == .delete ? "どの回を削除しますか？" : "どの回に変更を適用しますか？")
+        }
+    }
+
+    private var dateComponents: DatePickerComponents {
+        model.isAllDay ? [.date] : [.date, .hourAndMinute]
+    }
+
+    /// 繰り返しの予定なら範囲を聞く。削除はそれ以外でも必ず確認する（同期先からも消えるため）。
+    private func trigger(_ action: PendingAction) {
+        if model.needsSpanChoice {
+            pendingAction = action
+        } else if action == .delete {
+            confirmsDelete = true
+        } else {
+            run(action, span: .thisOccurrence)
+        }
+    }
+
+    private func run(_ action: PendingAction?, span: EditSpan) {
+        guard let action else { return }
+        Task {
+            let done = switch action {
+            case .save: await model.save(span: span)
+            case .delete: await model.delete(span: span)
+            }
+            if done { dismiss() }
+        }
+    }
+}

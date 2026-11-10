@@ -5,8 +5,15 @@ import SwiftUI
 /// 上部に終日・期限切れ、中央に時刻付き（グリッドかリスト）。期日なしのリマインダーは扱わない。
 struct DayTimelineView: View {
     let model: DayTimelineModel
+    /// 項目から詳細編集のモデルを作る。保存先（CalendarSource）は App が握る
+    let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
     @AppStorage(TimelineStyle.storageKey) private var style: TimelineStyle = .grid
     @Environment(\.scenePhase) private var scenePhase
+    @State private var editor: ItemEditorModel?
+
+    private var editing: ItemEditing {
+        ItemEditing(editor: $editor, make: makeEditor)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -80,7 +87,7 @@ struct DayTimelineView: View {
                 PinnedSection(title: "終日") {
                     FlowLayout(spacing: 6) {
                         ForEach(model.timeline.allDay) { item in
-                            AllDayChip(item: item) {
+                            AllDayChip(item: item, editing: editing) {
                                 Task { await model.toggleCompleted(item) }
                             }
                         }
@@ -108,7 +115,7 @@ struct DayTimelineView: View {
     private var timed: some View {
         switch style {
         case .grid:
-            DayGridView(placements: model.placements, isToday: model.isToday) { item in
+            DayGridView(placements: model.placements, isToday: model.isToday, editing: editing) { item in
                 Task { await model.toggleCompleted(item) }
             }
         case .list:
@@ -118,7 +125,7 @@ struct DayTimelineView: View {
     }
 
     private func row(_ item: TimelineItem, isOverdue: Bool = false) -> some View {
-        TimelineRow(item: item, isOverdue: isOverdue) {
+        TimelineRow(item: item, isOverdue: isOverdue, editing: editing) {
             Task { await model.toggleCompleted(item) }
         }
     }

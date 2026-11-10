@@ -5,6 +5,7 @@ import SwiftUI
 struct DayGridView: View {
     let placements: [GridPlacement]
     let isToday: Bool
+    let editing: ItemEditing
     let onToggle: (TimelineItem) -> Void
 
     private let hourHeight: CGFloat = 56
@@ -59,7 +60,7 @@ struct DayGridView: View {
         let gridWidth = max(0, availableWidth - labelWidth - trailingInset)
         return ForEach(placements) { placement in
             let columnWidth = gridWidth / CGFloat(max(1, placement.columnCount))
-            GridItemView(placement: placement) { onToggle(placement.item) }
+            GridItemView(placement: placement, editing: editing) { onToggle(placement.item) }
                 .frame(
                     width: max(0, columnWidth - 2),
                     height: max(18, y(forMinute: placement.durationMinutes) - 1),
@@ -100,6 +101,7 @@ struct DayGridView: View {
 /// グリッド上の 1 項目。予定はカレンダー色のブロック、リマインダーはチェック付きの行。
 private struct GridItemView: View {
     let placement: GridPlacement
+    let editing: ItemEditing
     let onToggle: () -> Void
 
     private var item: TimelineItem { placement.item }
@@ -127,6 +129,9 @@ private struct GridItemView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
             .clipShape(RoundedRectangle(cornerRadius: 4))
+            .contentShape(Rectangle())
+            .onTapGesture { editing.open(item) }
+            .itemEditor(for: item, editing)
         case .reminder:
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Button(action: onToggle) {
@@ -135,17 +140,24 @@ private struct GridItemView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(item.isCompleted ? "未完了に戻す" : "完了にする")
-                Text(item.title)
-                    .font(.caption)
-                    .strikethrough(item.isCompleted)
-                    .foregroundStyle(item.isCompleted ? .secondary : .primary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
+                HStack(spacing: 4) {
+                    PriorityMark(priority: item.priority)
+                        .font(.caption)
+                    Text(item.title)
+                        .font(.caption)
+                        .strikethrough(item.isCompleted)
+                        .foregroundStyle(item.isCompleted ? .secondary : .primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { editing.open(item) }
             }
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+            .itemEditor(for: item, editing)
         }
     }
 }
