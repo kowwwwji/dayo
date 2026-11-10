@@ -35,6 +35,11 @@ struct QuickInputBar: View {
         .padding(.vertical, 8)
         .background(.bar)
         .task { await model.loadDestinations() }
+        // 表示時は権限待ちで空だったり、純正アプリでリストが増えたりするので、印を打つたびに読み直す
+        .onChange(of: model.hasTrailingMarker) { _, hasMarker in
+            guard hasMarker else { return }
+            Task { await model.loadDestinations() }
+        }
     }
 
     /// `#` `@` の直後に出す保存先の候補。選ぶと名前が補完される。

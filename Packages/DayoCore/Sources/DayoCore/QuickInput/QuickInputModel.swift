@@ -99,11 +99,20 @@ public final class QuickInputModel {
         text = text[..<token.range.lowerBound] + token.marker + destination.name + " "
     }
 
+    /// 入力末尾に `#` か `@` の語があるか。候補一覧を読み直すきっかけに使う。
+    public var hasTrailingMarker: Bool {
+        Self.trailingMarkerToken(in: text) != nil
+    }
+
     private struct MarkerToken {
+        /// 半角に寄せた印（`#` か `@`）。
         let marker: String
         let name: String
         let range: Range<String.Index>
     }
+
+    /// 日本語入力では `＃` `＠` が全角で入るので、どちらも印として扱う。
+    private static let markers: [Character: String] = ["#": "#", "＃": "#", "@": "@", "＠": "@"]
 
     private static let compareOptions: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
 
@@ -115,7 +124,7 @@ public final class QuickInputModel {
         guard let last = text.last, !last.isWhitespace else { return nil }
         let start = text.lastIndex(where: \.isWhitespace).map { text.index(after: $0) } ?? text.startIndex
         let token = text[start...]
-        guard let marker = token.first.map(String.init), marker == "#" || marker == "@" else { return nil }
+        guard let first = token.first, let marker = markers[first] else { return nil }
         return MarkerToken(marker: marker, name: String(token.dropFirst()), range: start..<text.endIndex)
     }
 }

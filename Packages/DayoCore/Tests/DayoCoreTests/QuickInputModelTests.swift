@@ -113,6 +113,12 @@ private let reference = tokyo.date(from: DateComponents(year: 2026, month: 11, d
         model.text = "面談 @w"
         #expect(model.suggestions.map(\.name) == ["Work"])
 
+        // 日本語入力の全角記号でも出る
+        model.text = "歯医者　＃家"
+        #expect(model.suggestions.map(\.name) == ["家族"])
+        model.text = "面談 ＠"
+        #expect(model.suggestions.map(\.name) == ["Work", "個人的"])
+
         // 打ち終えた名前は候補に出さない。空白を打ったら候補は閉じる
         model.text = "面談 @Work"
         #expect(model.suggestions.isEmpty)
@@ -131,6 +137,11 @@ private let reference = tokyo.date(from: DateComponents(year: 2026, month: 11, d
 
         #expect(model.text == "明日 歯医者 #家族 ")
         #expect(model.suggestions.isEmpty)
+
+        // 全角で打った印は半角に直して補完する
+        model.text = "明日 歯医者 ＃"
+        model.apply(model.suggestions[0])
+        #expect(model.text == "明日 歯医者 #家族 ")
     }
 
     @Test func submitWithoutTitleIsRejected() async {
