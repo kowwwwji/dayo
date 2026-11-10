@@ -131,9 +131,15 @@ struct DayTimelineView: View {
     private var timed: some View {
         switch style {
         case .grid:
-            DayGridView(placements: model.placements, day: model.day, isToday: model.isToday, isLoaded: model.isLoadedForDay, editing: editing) { item in
-                Task { await model.toggleCompleted(item) }
-            }
+            DayGridView(
+                placements: model.placements,
+                day: model.day,
+                isToday: model.isToday,
+                isLoaded: model.isLoadedForDay,
+                editing: editing,
+                onToggle: { item in Task { await model.toggleCompleted(item) } },
+                onMove: { item, minute, span in Task { await model.move(item, toStartMinute: minute, span: span) } }
+            )
         case .list:
             List(model.timeline.timed) { row($0) }
                 .listStyle(.plain)
