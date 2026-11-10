@@ -118,11 +118,11 @@ struct DayTimelineView: View {
         DayGridView(
             placements: model.placements,
             day: model.day,
-            isToday: model.isToday,
-            isLoaded: model.isLoadedForDay,
+            isToday: model.containsToday,
+            isLoaded: model.isLoadedForRange,
             editing: editing,
             onToggle: { item in Task { await model.toggleCompleted(item) } },
-            onMove: { item, minute, span in Task { await model.move(item, toStartMinute: minute, span: span) } }
+            onMove: { item, minute, span in Task { await model.move(item, from: model.day, toDay: model.day, startMinute: minute, span: span) } }
         )
     }
 

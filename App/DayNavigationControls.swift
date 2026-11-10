@@ -8,21 +8,21 @@ struct DayNavigationControls: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            if !model.isToday {
+            if !model.containsToday {
                 Button("今日") { Task { await model.showToday() } }
             }
-            Button { Task { await model.showPreviousDay() } } label: {
+            Button { Task { await model.showPrevious() } } label: {
                 Image(systemName: "chevron.left")
                     .frame(minWidth: 20, minHeight: 20)
             }
             .accessibilityLabel("前の日")
-            Button { Task { await model.showNextDay() } } label: {
+            Button { Task { await model.showNext() } } label: {
                 Image(systemName: "chevron.right")
                     .frame(minWidth: 20, minHeight: 20)
             }
             .accessibilityLabel("次の日")
         }
-        .animation(.default, value: model.isToday)
+        .animation(.default, value: model.containsToday)
         .buttonStyle(.bordered)
         .controlSize(.large)
     }

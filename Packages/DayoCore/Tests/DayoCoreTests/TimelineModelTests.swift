@@ -77,8 +77,10 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
     let d1 = iso("2026-11-11T00:00:00Z")
     let d2 = iso("2026-11-12T00:00:00Z")
 
-    private func makeModel(_ source: FakeSource, now: @escaping () -> Date) -> TimelineModel {
-        TimelineModel(source: source, calendar: utc, now: now)
+    private func makeModel(
+        _ source: FakeSource, mode: TimelineMode = .day, now: @escaping () -> Date
+    ) -> TimelineModel {
+        TimelineModel(source: source, calendar: utc, mode: mode, now: now)
     }
 
     @Test func activateLoadsTodayWithOverdue() async {
@@ -113,7 +115,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         let source = FakeSource()
         let model = makeModel(source) { self.d0 }
 
-        await model.showNextDay()
+        await model.showNext()
         await model.showToday()
 
         #expect(model.day == d0)
@@ -128,9 +130,9 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         source.gate = true
         let model = makeModel(source) { self.d0 }
 
-        let first = Task { await model.showNextDay() }
+        let first = Task { await model.showNext() }
         await source.waitForPending(1)
-        let second = Task { await model.showNextDay() }
+        let second = Task { await model.showNext() }
         await source.waitForPending(2)
 
         source.release(at: 1)
@@ -179,13 +181,13 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         var now = d0
         let model = makeModel(source) { now }
 
-        await model.showPreviousDay()
+        await model.showPrevious()
         now = d1
         await model.handleDayChanged()
         #expect(model.day == iso("2026-11-09T00:00:00Z"))
 
         await model.showToday()
-        await model.showNextDay()
+        await model.showNext()
         #expect(model.day == d2)
         now = d2
         await model.handleDayChanged()
@@ -218,7 +220,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
 
         // 保存後の読み直しを止めて、楽観更新の状態を見る
         source.gate = true
-        let task = Task { await model.move(original, toStartMinute: 11 * 60, span: .futureOccurrences) }
+        let task = Task { await model.move(original, from: self.d0, toDay: self.d0, startMinute: 11 * 60, span: .futureOccurrences) }
         await source.waitForPending(1)
 
         #expect(model.placements.first?.startMinute == 11 * 60)
@@ -247,7 +249,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.placements.first?.startMinute == 0)
 
         // 3 時間下へ → 開始も 3 時間だけ後ろへ（当日 3:00 に飛ばない）
-        await model.move(event, toStartMinute: 180, span: .thisOccurrence)
+        await model.move(event, from: d0, toDay: d0, startMinute: 180, span: .thisOccurrence)
 
         #expect(source.updates.first?.draft.start == iso("2026-11-10T01:00:00Z"))
         #expect(source.updates.first?.draft.end == iso("2026-11-10T05:00:00Z"))
@@ -261,10 +263,269 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         let model = makeModel(source) { self.d0 }
         await model.activate()
 
-        await model.move(original, toStartMinute: 11 * 60, span: .thisOccurrence)
+        await model.move(original, from: d0, toDay: d0, startMinute: 11 * 60, span: .thisOccurrence)
 
         #expect(model.errorMessage != nil)
         #expect(model.placements.first?.startMinute == 9 * 60)
+    }
+}
+
+@MainActor
+@Suite struct TimelineModelWeekTests {
+    /// 2026-11-10 は火曜。週（日曜始まり）は 11-08 〜 11-14。
+    let today = iso("2026-11-10T00:00:00Z")
+    let weekStart = iso("2026-11-08T00:00:00Z")
+    let nextWeekStart = iso("2026-11-15T00:00:00Z")
+
+    private func day(_ dayOfMonth: Int) -> Date {
+        iso("2026-11-\(String(format: "%02d", dayOfMonth))T00:00:00Z")
+    }
+
+    private func makeModel(
+        _ source: FakeSource, mode: TimelineMode = .week, now: @escaping () -> Date
+    ) -> TimelineModel {
+        TimelineModel(source: source, calendar: utc, mode: mode, now: now)
+    }
+
+    private func recurring(_ id: String, start: Date, allDay: Bool = false) -> TimelineItem {
+        TimelineItem(
+            id: id, calendarItemIdentifier: id, kind: .reminder, title: id, start: start, end: nil,
+            isAllDay: allDay, isCompleted: false, sourceName: "", accountName: "",
+            color: CGColor(gray: 0, alpha: 1), recurrence: RecurrenceSpec(frequency: .daily), isShared: false
+        )
+    }
+
+    @Test func dayModeHasASingleColumn() async {
+        let source = FakeSource()
+        let model = makeModel(source, mode: .day) { self.today }
+        await model.activate()
+
+        #expect(model.mode == .day)
+        #expect(model.columns.map(\.day) == [today])
+        #expect(model.range == DateInterval(start: today, end: day(11)))
+    }
+
+    @Test func weekModeLoadsTheWeekContainingToday() async {
+        let source = FakeSource()
+        let tue = item("tue", start: iso("2026-11-10T09:00:00Z"))
+        let fri = item("fri", start: iso("2026-11-13T15:00:00Z"))
+        let old = item("old", start: iso("2026-11-01T09:00:00Z"))
+        source.snapshots[weekStart] = TimelineSnapshot(items: [fri, tue], overdue: [old])
+        let model = makeModel(source) { self.today }
+
+        await model.activate()
+
+        #expect(source.requests.map(\.range) == [DateInterval(start: weekStart, end: nextWeekStart)])
+        #expect(source.requests.map(\.includingOverdue) == [true])
+        #expect(model.containsToday)
+        #expect(model.columns.map(\.day) == (8...14).map(day))
+        #expect(model.columns[2].placements.map(\.id) == ["tue"])
+        #expect(model.columns[5].placements.map(\.id) == ["fri"])
+        #expect(model.timeline.overdue == [old])
+        #expect(model.isLoadedForRange)
+    }
+
+    @Test func weekModeMovesByWeeksAndRequestsOverdueOnlyForThisWeek() async {
+        let source = FakeSource()
+        let model = makeModel(source) { self.today }
+
+        await model.showNext()
+        #expect(model.range.start == nextWeekStart)
+        #expect(model.containsToday == false)
+        await model.showPrevious()
+        await model.showPrevious()
+        #expect(model.range.start == iso("2026-11-01T00:00:00Z"))
+        await model.showToday()
+
+        #expect(model.range.start == weekStart)
+        #expect(source.requests.map(\.includingOverdue) == [false, true, false, true])
+    }
+
+    @Test func allDayItemsBecomeSpansInWeekMode() async {
+        let source = FakeSource()
+        let trip = TimelineItem(
+            id: "trip", calendarItemIdentifier: "trip", kind: .event, title: "出張",
+            start: day(9), end: iso("2026-11-10T23:59:59Z"), isAllDay: true, isCompleted: false,
+            sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false
+        )
+        source.snapshots[weekStart] = TimelineSnapshot(items: [trip], overdue: [])
+        let model = makeModel(source) { self.today }
+
+        await model.activate()
+
+        #expect(model.allDaySpans.map(\.id) == ["trip"])
+        #expect(model.allDaySpans.map(\.firstColumn) == [1])
+        #expect(model.allDaySpans.map(\.columnSpan) == [2])
+    }
+
+    @Test func switchingModeReloadsTheNewRange() async {
+        let source = FakeSource()
+        let model = makeModel(source, mode: .day) { self.today }
+        await model.activate()
+
+        await model.setMode(.week)
+        #expect(model.mode == .week)
+        #expect(model.columns.count == 7)
+
+        await model.setMode(.day)
+        #expect(model.columns.map(\.day) == [today])
+        #expect(source.requests.map(\.range.start) == [today, weekStart, today])
+    }
+
+    @Test func settingTheSameModeDoesNotReload() async {
+        let source = FakeSource()
+        let model = makeModel(source) { self.today }
+        await model.setMode(.week)
+        #expect(source.requests.isEmpty)
+    }
+
+    @Test func switchingToDayShowsTodayWhenTheWeekContainsIt() async {
+        let source = FakeSource()
+        let model = makeModel(source, mode: .day) { self.today }
+        // 木曜を見てから週へ → 日へ戻すと今日
+        await model.showNext()
+        await model.showNext()
+        await model.setMode(.week)
+        await model.setMode(.day)
+        #expect(model.day == today)
+    }
+
+    @Test func switchingToDayKeepsTheDayWhenTheWeekIsNotThisWeek() async {
+        let source = FakeSource()
+        let model = makeModel(source) { self.today }
+        await model.showNext()
+        await model.setMode(.day)
+        #expect(model.day == day(17))
+        #expect(model.containsToday == false)
+    }
+
+    @Test func dayChangeInsideTheWeekKeepsFollowingToday() async {
+        let source = FakeSource()
+        var now = today
+        let model = makeModel(source) { now }
+        await model.activate()
+
+        now = day(11)
+        await model.handleDayChanged()
+        await model.setMode(.day)
+
+        #expect(model.day == day(11))
+    }
+
+    @Test func futureOccurrencesAppearAsVirtualItemsInTheWeek() async {
+        let source = FakeSource()
+        let pill = recurring("薬", start: iso("2026-11-10T21:00:00Z"))
+        source.snapshots[weekStart] = TimelineSnapshot(items: [pill], overdue: [], recurring: [pill])
+        let model = makeModel(source) { self.today }
+
+        await model.activate()
+
+        #expect(model.columns.map(\.placements.count) == [0, 0, 1, 1, 1, 1, 1])
+        #expect(model.columns[2].placements.map(\.item.isVirtual) == [false])
+        #expect(model.columns[3].placements.map(\.item.isVirtual) == [true])
+        #expect(model.columns[3].placements.map(\.startMinute) == [21 * 60])
+    }
+
+    @Test func futureOccurrencesAppearInDayModeOnALaterDay() async {
+        let source = FakeSource()
+        let pill = recurring("薬", start: iso("2026-11-10T21:00:00Z"))
+        source.snapshots[day(12)] = TimelineSnapshot(items: [], overdue: [], recurring: [pill])
+        let model = makeModel(source, mode: .day) { self.today }
+
+        await model.showNext()
+        await model.showNext()
+
+        #expect(model.timeline.timed.map(\.isVirtual) == [true])
+        #expect(model.timeline.timed.map(\.start) == [iso("2026-11-12T21:00:00Z")])
+    }
+
+    @Test func allDayFutureOccurrencesBecomeSpans() async {
+        let source = FakeSource()
+        let trash = recurring("ゴミ", start: day(12), allDay: true)
+        source.snapshots[weekStart] = TimelineSnapshot(items: [trash], overdue: [], recurring: [trash])
+        let model = makeModel(source) { self.today }
+
+        await model.activate()
+
+        #expect(model.allDaySpans.map(\.firstColumn) == [4, 5, 6])
+        #expect(model.allDaySpans.map(\.item.isVirtual) == [false, true, true])
+    }
+
+    @Test func occurrencesBeforeNowAreNotShown() async {
+        let source = FakeSource()
+        // 月曜 9:00 の回が未完了のまま火曜 10:00 になった。火曜 9:00 の回は「将来」ではないので出さない
+        let late = recurring("朝", start: iso("2026-11-09T09:00:00Z"))
+        source.snapshots[weekStart] = TimelineSnapshot(items: [late], overdue: [], recurring: [late])
+        let model = makeModel(source) { iso("2026-11-10T10:00:00Z") }
+
+        await model.activate()
+
+        #expect(model.columns.map(\.placements.count) == [0, 1, 0, 1, 1, 1, 1])
+    }
+
+    @Test func virtualItemsCannotBeCompletedOrMoved() async {
+        let source = FakeSource()
+        let pill = recurring("薬", start: iso("2026-11-10T21:00:00Z"))
+        source.snapshots[weekStart] = TimelineSnapshot(items: [pill], overdue: [], recurring: [pill])
+        let model = makeModel(source) { self.today }
+        await model.activate()
+        let virtual = model.columns[3].placements[0].item
+        let requests = source.requests.count
+
+        await model.toggleCompleted(virtual)
+        await model.move(virtual, from: day(11), toDay: day(12), startMinute: 600, span: .thisOccurrence)
+
+        #expect(source.completions.isEmpty)
+        #expect(source.updates.isEmpty)
+        #expect(source.requests.count == requests)
+        #expect(model.columns[3].placements.map(\.startMinute) == [21 * 60])
+    }
+
+    @Test func moveToAnotherDayKeepsTheDurationAndShowsItThereBeforeSaving() async {
+        let source = FakeSource()
+        let event = TimelineItem(
+            id: "e", calendarItemIdentifier: "e", kind: .event, title: "面談",
+            start: iso("2026-11-10T09:00:00Z"), end: iso("2026-11-10T10:30:00Z"), isAllDay: false,
+            isCompleted: false, sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1),
+            recurrence: nil, isShared: false
+        )
+        source.snapshots[weekStart] = TimelineSnapshot(items: [event], overdue: [])
+        let model = makeModel(source) { self.today }
+        await model.activate()
+
+        source.gate = true
+        let task = Task {
+            await model.move(event, from: self.today, toDay: self.day(13), startMinute: 14 * 60, span: .thisOccurrence)
+        }
+        await source.waitForPending(1)
+
+        #expect(model.columns[2].placements.isEmpty)
+        #expect(model.columns[5].placements.map(\.startMinute) == [14 * 60])
+        #expect(source.updates.first?.draft.start == iso("2026-11-13T14:00:00Z"))
+        #expect(source.updates.first?.draft.end == iso("2026-11-13T15:30:00Z"))
+
+        source.release(at: 0)
+        await task.value
+    }
+
+    @Test func movingTheSecondDayOfAnOvernightEventShiftsByTheVisibleDelta() async {
+        let source = FakeSource()
+        // 火 22:00 〜 水 2:00。水曜の列では 0:00〜2:00 に切って出ている
+        let event = TimelineItem(
+            id: "e", calendarItemIdentifier: "e", kind: .event, title: "夜勤",
+            start: iso("2026-11-10T22:00:00Z"), end: iso("2026-11-11T02:00:00Z"), isAllDay: false,
+            isCompleted: false, sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1),
+            recurrence: nil, isShared: false
+        )
+        source.snapshots[weekStart] = TimelineSnapshot(items: [event], overdue: [])
+        let model = makeModel(source) { self.today }
+        await model.activate()
+
+        // 水曜の切れ端を木曜の 1:00 へ → 全体が 1 日と 1 時間後ろへ
+        await model.move(event, from: day(11), toDay: day(12), startMinute: 60, span: .thisOccurrence)
+
+        #expect(source.updates.first?.draft.start == iso("2026-11-11T23:00:00Z"))
+        #expect(source.updates.first?.draft.end == iso("2026-11-12T03:00:00Z"))
     }
 }
 
