@@ -2,11 +2,15 @@ import DayoCore
 import SwiftUI
 
 /// 前日・翌日・今日へ移るボタン。指でもマウスでも押しやすいよう枠付きで大きめにする。
+/// 「今日」は今日以外を見ているときだけ ‹ › の左に現れる。‹ › は右端に固定して位置が変わらないようにする。
 struct DayNavigationControls: View {
     let model: DayTimelineModel
 
     var body: some View {
         HStack(spacing: 6) {
+            if !model.isToday {
+                Button("今日") { Task { await model.showToday() } }
+            }
             Button { Task { await model.showPreviousDay() } } label: {
                 Image(systemName: "chevron.left")
                     .frame(minWidth: 20, minHeight: 20)
@@ -17,9 +21,8 @@ struct DayNavigationControls: View {
                     .frame(minWidth: 20, minHeight: 20)
             }
             .accessibilityLabel("次の日")
-            Button("今日") { Task { await model.showToday() } }
-                .disabled(model.isToday)
         }
+        .animation(.default, value: model.isToday)
         .buttonStyle(.bordered)
         .controlSize(.large)
     }

@@ -2,12 +2,11 @@ import DayoCore
 import SwiftUI
 
 /// 1 日分の予定と Todo を 1 本の時間軸で見せる。
-/// 上部に終日・期限切れ、中央に時刻付き（グリッドかリスト）。期日なしのリマインダーは扱わない。
+/// 上部に終日・期限切れ、中央に時刻付きのグリッド。期日なしのリマインダーは扱わない。
 struct DayTimelineView: View {
     let model: DayTimelineModel
     /// 項目から詳細編集のモデルを作る。保存先（CalendarSource）は App が握る
     let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
-    @AppStorage(TimelineStyle.storageKey) private var style: TimelineStyle = .grid
     @Environment(\.scenePhase) private var scenePhase
     @State private var editor: ItemEditorModel?
     @State private var showsSettings = false
@@ -19,7 +18,7 @@ struct DayTimelineView: View {
     var body: some View {
         VStack(spacing: 0) {
             #if os(iOS)
-            // Mac は日付をウィンドウタイトルに、移動と表示切替を入力欄の行に置くのでヘッダーは無い
+            // Mac は日付をウィンドウタイトルに、移動を入力欄の行に置くのでヘッダーは無い
             header
             Divider()
             #endif
@@ -49,10 +48,6 @@ struct DayTimelineView: View {
         HStack(spacing: 12) {
             DayNavigationControls(model: model)
             Spacer()
-            TimelineStylePicker(style: $style)
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 110)
             // iPhone には設定ウィンドウが無いのでここから開く（Mac は ⌘,）
             Button { showsSettings = true } label: {
                 Image(systemName: "gearshape")
@@ -119,23 +114,16 @@ struct DayTimelineView: View {
         }
     }
 
-    @ViewBuilder
     private var timed: some View {
-        switch style {
-        case .grid:
-            DayGridView(
-                placements: model.placements,
-                day: model.day,
-                isToday: model.isToday,
-                isLoaded: model.isLoadedForDay,
-                editing: editing,
-                onToggle: { item in Task { await model.toggleCompleted(item) } },
-                onMove: { item, minute, span in Task { await model.move(item, toStartMinute: minute, span: span) } }
-            )
-        case .list:
-            List(model.timeline.timed) { row($0) }
-                .listStyle(.plain)
-        }
+        DayGridView(
+            placements: model.placements,
+            day: model.day,
+            isToday: model.isToday,
+            isLoaded: model.isLoadedForDay,
+            editing: editing,
+            onToggle: { item in Task { await model.toggleCompleted(item) } },
+            onMove: { item, minute, span in Task { await model.move(item, toStartMinute: minute, span: span) } }
+        )
     }
 
     private func row(_ item: TimelineItem, isOverdue: Bool = false) -> some View {

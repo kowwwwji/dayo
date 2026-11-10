@@ -7,7 +7,6 @@ struct RootView: View {
     let model: DayTimelineModel
     let quickInput: QuickInputModel
     let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
-    @AppStorage(TimelineStyle.storageKey) private var style: TimelineStyle = .grid
     @AppStorage(DayTitle.showsWeekNumberKey) private var showsWeekNumber = true
 
     private var title: String {
@@ -24,13 +23,9 @@ struct RootView: View {
             .navigationSplitViewColumnWidth(min: 160, ideal: 200)
         } detail: {
             VStack(spacing: 0) {
-                // 日付の移動と表示切替は入力欄と同じ行に置く。日付そのものはウィンドウタイトルに出す
+                // 日付の移動は入力欄と同じ行の右端に置く。日付そのものはウィンドウタイトルに出す
                 QuickInputBar(model: quickInput) {
                     DayNavigationControls(model: model)
-                    TimelineStylePicker(style: $style)
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .frame(width: 110)
                 }
                 Divider()
                 DayTimelineView(model: model, makeEditor: makeEditor)
