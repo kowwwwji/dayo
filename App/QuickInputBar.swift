@@ -20,10 +20,14 @@ struct QuickInputBar: View {
                         if model.applySelectedSuggestion() { return }
                         Task { await model.submit() }
                     }
-                    // Tab: 候補が出ている間はフォーカス移動ではなく候補の選択に使う
-                    .onKeyPress(.tab) {
+                    // Tab / Shift+Tab: 候補が出ている間はフォーカス移動ではなく候補の選択に使う
+                    .onKeyPress(keys: [.tab]) { press in
                         guard !model.suggestions.isEmpty else { return .ignored }
-                        model.selectNextSuggestion()
+                        if press.modifiers.contains(.shift) {
+                            model.selectPreviousSuggestion()
+                        } else {
+                            model.selectNextSuggestion()
+                        }
                         return .handled
                     }
                 if model.isSubmitting {

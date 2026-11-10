@@ -160,6 +160,11 @@ private let reference = tokyo.date(from: DateComponents(year: 2026, month: 11, d
         #expect(model.selectedSuggestionID == destination("仕事", .reminder).id)
         model.selectNextSuggestion()
         #expect(model.selectedSuggestionID == destination("家族", .reminder).id)
+        // Shift+Tab で戻る。先頭から戻ると末尾
+        model.selectPreviousSuggestion()
+        #expect(model.selectedSuggestionID == destination("仕事", .reminder).id)
+        model.selectPreviousSuggestion()
+        #expect(model.selectedSuggestionID == destination("家族", .reminder).id)
 
         #expect(model.applySelectedSuggestion())
         #expect(model.text == "歯医者 #家族 ")

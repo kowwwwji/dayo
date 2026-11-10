@@ -108,12 +108,21 @@ public final class QuickInputModel {
 
     /// Tab: 候補を順に選ぶ。末尾まで来たら先頭に戻る。
     public func selectNextSuggestion() {
+        moveSelection(by: 1)
+    }
+
+    /// Shift+Tab: 前の候補へ。先頭から戻ると末尾。
+    public func selectPreviousSuggestion() {
+        moveSelection(by: -1)
+    }
+
+    private func moveSelection(by offset: Int) {
         let current = suggestions
         guard !current.isEmpty else { return }
         if let id = selectedSuggestionID, let index = current.firstIndex(where: { $0.id == id }) {
-            selectedSuggestionID = current[(index + 1) % current.count].id
+            selectedSuggestionID = current[(index + offset + current.count) % current.count].id
         } else {
-            selectedSuggestionID = current[0].id
+            selectedSuggestionID = (offset > 0 ? current.first : current.last)?.id
         }
     }
 
