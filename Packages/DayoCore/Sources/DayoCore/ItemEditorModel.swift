@@ -1,0 +1,228 @@
+import Foundation
+import Observation
+
+/// 詳細編集の状態。1 件の `TimelineItem` を開いて直し、`ItemDraft` にして保存する。
+@MainActor
+@Observable
+public final class ItemEditorModel {
+    /// 繰り返しの選択肢。プリセットは開始日時の曜日・日から規則を作る。
+    public enum RecurrenceOption: Hashable, CaseIterable, Sendable {
+        case none
+        case daily
+        case weekdays
+        case weekly
+        case biweekly
+        case monthly
+        /// 元の規則がプリセットに無い（例: 毎週月水金）。変えなければそのまま保存する。
+        case custom
+        /// 年次・終了付きなど、このアプリで表せない規則。保存時に触らない。
+        case unsupported
+    }
+
+    public let item: TimelineItem
+    public var title: String
+    public var notes: String
+    /// reminder のみ。false なら期日なし。event は常に true 扱い。
+    public var hasDate: Bool
+    public var isAllDay: Bool
+    public var start: Date
+    /// event のみ。
+    public var end: Date
+    public var recurrence: RecurrenceOption
+    public var destinationID: String
+    /// reminder のみ。
+    public var priority: ReminderPriority
+    public private(set) var destinations: [Destination] = []
+    public private(set) var isSaving = false
+    public private(set) var errorMessage: String?
+    /// 保存・削除に成功したあとに呼ぶ。タイムラインの再読み込みに使う。
+    public var onChanged: (@MainActor () async -> Void)?
+
+    private let source: CalendarSource
+    private let calendar: Calendar
+
+    public init(
+        item: TimelineItem,
+        source: CalendarSource,
+        calendar: Calendar = QuickInputModel.defaultCalendar,
+        now: Date = .now
+    ) {
+        self.item = item
+        self.source = source
+        self.calendar = calendar
+        title = item.title
+        notes = item.notes ?? ""
+        hasDate = item.start != nil
+        // 期日なしから期日ありに切り替えたときの初期値は今日の 9:00
+        let defaultStart = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: now) ?? now
+        let startValue = item.start ?? defaultStart
+        start = startValue
+        isAllDay = item.start == nil ? true : item.isAllDay
+        end = item.end ?? calendar.date(byAdding: .hour, value: 1, to: startValue) ?? startValue
+        destinationID = item.calendarIdentifier
+        priority = item.priority
+        recurrence = .none
+        recurrence = Self.option(for: item, calendar: calendar)
+    }
+
+    // MARK: - 繰り返し
+
+    /// 画面に出す選択肢。custom / unsupported は元の項目がそうであるときだけ。
+    public var recurrenceOptions: [RecurrenceOption] {
+        var options: [RecurrenceOption] = [.none, .daily, .weekdays, .weekly, .biweekly, .monthly]
+        let original = Self.option(for: item, calendar: calendar)
+        if original == .custom || original == .unsupported {
+            options.append(original)
+        }
+        return options
+    }
+
+    public func label(for option: RecurrenceOption) -> String {
+        switch option {
+        case .none: return "なし"
+        case .daily: return "毎日"
+        case .weekdays: return "平日"
+        case .weekly: return preset(.weekly)?.localizedDescription ?? "毎週"
+        case .biweekly: return preset(.biweekly)?.localizedDescription ?? "隔週"
+        case .monthly: return preset(.monthly)?.localizedDescription ?? "毎月"
+        case .custom: return item.recurrence?.localizedDescription ?? "カスタム"
+        case .unsupported: return "カスタム（このアプリでは変更できません）"
+        }
+    }
+
+    /// 選択肢と開始日時から規則を作る。`none` と `unsupported` は nil。
+    private func preset(_ option: RecurrenceOption) -> RecurrenceSpec? {
+        Self.preset(option, start: start, original: item.recurrence, calendar: calendar)
+    }
+
+    private static func preset(_ option: RecurrenceOption, start: Date, original: RecurrenceSpec?, calendar: Calendar) -> RecurrenceSpec? {
+        let weekday = calendar.component(.weekday, from: start)
+        switch option {
+        case .none, .unsupported: return nil
+        case .daily: return RecurrenceSpec(frequency: .daily)
+        case .weekdays: return RecurrenceSpec(frequency: .weekly, weekdays: [2, 3, 4, 5, 6])
+        case .weekly: return RecurrenceSpec(frequency: .weekly, weekdays: [weekday])
+        case .biweekly: return RecurrenceSpec(frequency: .weekly, interval: 2, weekdays: [weekday])
+        case .monthly: return RecurrenceSpec(frequency: .monthly, daysOfMonth: [calendar.component(.day, from: start)])
+        case .custom: return original
+        }
+    }
+
+    /// 元の項目の規則に当たる選択肢。
+    /// 曜日や日を省いた「毎週」「毎月」（純正アプリがよく作る形）は開始日時で補って比べる。
+    static func option(for item: TimelineItem, calendar: Calendar) -> RecurrenceOption {
+        guard item.hasRecurrence else { return .none }
+        guard let spec = item.recurrence, let start = item.start else { return .unsupported }
+        let normalized = normalize(spec, start: start, calendar: calendar)
+        for option in [RecurrenceOption.daily, .weekdays, .weekly, .biweekly, .monthly]
+        where preset(option, start: start, original: nil, calendar: calendar).map({ normalize($0, start: start, calendar: calendar) }) == normalized {
+            return option
+        }
+        return .custom
+    }
+
+    /// 比較用に曜日・日の省略を補い、曜日の順序を揃える。
+    private static func normalize(_ spec: RecurrenceSpec, start: Date, calendar: Calendar) -> RecurrenceSpec {
+        var result = spec
+        switch spec.frequency {
+        case .weekly where spec.weekdays.isEmpty:
+            result.weekdays = [calendar.component(.weekday, from: start)]
+        case .monthly where spec.daysOfMonth.isEmpty && spec.weekOfMonth == nil:
+            result.daysOfMonth = [calendar.component(.day, from: start)]
+        default:
+            break
+        }
+        result.weekdays.sort()
+        return result
+    }
+
+    /// 選択肢と開始日が元のままなら元の規則をそのまま返す。Repository 側で「変更なし」と判定され、作り直しを避けられる。
+    private var recurrenceForDraft: RecurrenceSpec? {
+        let original = Self.option(for: item, calendar: calendar)
+        if recurrence == original, let originalStart = item.start, let originalSpec = item.recurrence,
+           calendar.isDate(originalStart, inSameDayAs: start) {
+            return originalSpec
+        }
+        return preset(recurrence)
+    }
+
+    // MARK: - 保存
+
+    /// 予定の繰り返しは回ごとに分けて変えられるので、保存・削除の前に範囲を聞く。
+    public var needsSpanChoice: Bool {
+        item.kind == .event && item.hasRecurrence
+    }
+
+    public var draft: ItemDraft {
+        let usesDate = item.kind == .event || hasDate
+        let startValue: Date? = usesDate ? (isAllDay ? calendar.startOfDay(for: start) : start) : nil
+        var endValue: Date?
+        if item.kind == .event {
+            endValue = isAllDay ? calendar.startOfDay(for: end) : end
+        }
+        return ItemDraft(
+            kind: item.kind,
+            title: title.trimmingCharacters(in: .whitespaces),
+            start: startValue,
+            end: endValue,
+            isAllDay: usesDate && isAllDay,
+            recurrence: recurrenceForDraft,
+            calendarID: destinationID.isEmpty ? nil : destinationID,
+            notes: notes,
+            priority: item.kind == .reminder ? priority : .none
+        )
+    }
+
+    /// 保存できない理由。nil なら保存できる。
+    public var validationMessage: String? {
+        if title.trimmingCharacters(in: .whitespaces).isEmpty {
+            return "タイトルを入力してください"
+        }
+        if item.kind == .event {
+            let startValue = isAllDay ? calendar.startOfDay(for: start) : start
+            let endValue = isAllDay ? calendar.startOfDay(for: end) : end
+            // 開始と終了が同じ（長さ 0）の予定は EventKit 上あり得るので許す
+            if endValue < startValue {
+                return "終了は開始より前にはできません"
+            }
+        }
+        if item.kind == .reminder, !hasDate, recurrence != .none {
+            return "繰り返しのあるリマインダーには期日が必要です"
+        }
+        return nil
+    }
+
+    /// 失敗しても候補が出ないだけなので、エラーは表示しない。
+    public func loadDestinations() async {
+        if let loaded = try? await source.destinations() {
+            destinations = loaded.filter { $0.kind == item.kind }
+        }
+    }
+
+    public func save(span: EditSpan = .thisOccurrence) async -> Bool {
+        if let validationMessage {
+            errorMessage = validationMessage
+            return false
+        }
+        return await perform { try await self.source.update(self.item, with: self.draft, span: span) }
+    }
+
+    public func delete(span: EditSpan = .thisOccurrence) async -> Bool {
+        await perform { try await self.source.delete(self.item, span: span) }
+    }
+
+    private func perform(_ operation: () async throws -> Void) async -> Bool {
+        guard !isSaving else { return false }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await operation()
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+        errorMessage = nil
+        await onChanged?()
+        return true
+    }
+}

@@ -60,6 +60,13 @@ public struct TimelineSnapshot: Equatable {
     public static let empty = TimelineSnapshot(items: [], overdue: [])
 }
 
+/// 繰り返し予定の編集・削除がどの回に及ぶか。
+/// リマインダーの繰り返しは 1 オブジェクトしか無いので常に全体が変わり、この値は無視される。
+public enum EditSpan: Equatable, Sendable {
+    case thisOccurrence
+    case futureOccurrences
+}
+
 /// 保存先の候補。リマインダーのリストか予定のカレンダー。
 public struct Destination: Equatable, Identifiable {
     public var id: String
@@ -86,7 +93,10 @@ public protocol CalendarSource {
     func setCompleted(_ completed: Bool, for item: TimelineItem) async throws
     /// 予定またはリマインダーを新規登録する。反映は `changes` 経由か呼び出し側の再取得で行う。
     func create(_ draft: ItemDraft) async throws
-    /// 書き込めるリストとカレンダーの一覧。クイック入力の `#` `@` 補完に使う。
+    /// 既存の項目を `draft` の内容で上書きする。種別（event / reminder）は変えられない。
+    func update(_ item: TimelineItem, with draft: ItemDraft, span: EditSpan) async throws
+    func delete(_ item: TimelineItem, span: EditSpan) async throws
+    /// 書き込めるリストとカレンダーの一覧。クイック入力の `#` `@` 補完とエディタの保存先選択に使う。
     func destinations() async throws -> [Destination]
     /// 取得元に変更があったときに値を流す。受け取ったら表示中の期間を再取得する。
     var changes: AsyncStream<Void> { get }

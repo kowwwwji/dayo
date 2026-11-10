@@ -61,38 +61,50 @@ public final class EventKitRepository: CalendarSource {
     public func create(_ draft: ItemDraft) async throws {
         switch draft.kind {
         case .reminder:
-            guard let calendar = try calendar(named: draft.listName, for: .reminder)
-                ?? store.defaultCalendarForNewReminders()
+            guard let calendar = try resolveCalendar(draft, for: .reminder) ?? store.defaultCalendarForNewReminders()
             else { throw CalendarSourceError.noCalendar }
             let reminder = EKReminder(eventStore: store)
-            reminder.title = draft.title
             reminder.calendar = calendar
-            if let start = draft.start {
-                reminder.dueDateComponents = Self.dueComponents(for: start, allDay: draft.isAllDay, timeZone: timeZone)
-                // 期日時刻の通知は純正リマインダーが出す。アラームが無いと時刻付きでも通知されない
-                if !draft.isAllDay {
-                    reminder.addAlarm(EKAlarm(absoluteDate: start))
-                }
-            }
-            if let recurrence = draft.recurrence {
-                reminder.addRecurrenceRule(EKRecurrenceRule(recurrence))
-            }
-            try store.save(reminder, commit: true)
+            try apply(draft, to: reminder, previous: nil)
+            try commit { try store.save(reminder, commit: true) }
         case .event:
-            guard let start = draft.start else { throw CalendarSourceError.eventNeedsStart }
-            guard let calendar = try calendar(named: draft.listName, for: .event)
-                ?? store.defaultCalendarForNewEvents
+            guard let calendar = try resolveCalendar(draft, for: .event) ?? store.defaultCalendarForNewEvents
             else { throw CalendarSourceError.noCalendar }
             let event = EKEvent(eventStore: store)
-            event.title = draft.title
             event.calendar = calendar
-            event.startDate = start
-            event.endDate = draft.end ?? start
-            event.isAllDay = draft.isAllDay
-            if let recurrence = draft.recurrence {
-                event.addRecurrenceRule(EKRecurrenceRule(recurrence))
+            try apply(draft, to: event, previous: nil, changesRecurrence: true)
+            try commit { try store.save(event, span: .thisEvent, commit: true) }
+        }
+    }
+
+    public func update(_ item: TimelineItem, with draft: ItemDraft, span: EditSpan) async throws {
+        switch item.kind {
+        case .reminder:
+            let reminder = try fetchReminder(item)
+            try commit {
+                if let calendar = try resolveCalendar(draft, for: .reminder) { reminder.calendar = calendar }
+                try apply(draft, to: reminder, previous: item)
+                try store.save(reminder, commit: true)
             }
-            try store.save(event, span: .thisEvent, commit: true)
+        case .event:
+            guard draft.start != nil else { throw CalendarSourceError.eventNeedsStart }
+            let event = try fetchEvent(item)
+            // 繰り返しの 1 回だけを変えるときは規則とカレンダーには触れない。回ごとに持てるものではないため
+            let wholeSeries = !item.hasRecurrence || span == .futureOccurrences
+            try commit {
+                if wholeSeries, let calendar = try resolveCalendar(draft, for: .event) { event.calendar = calendar }
+                try apply(draft, to: event, previous: item, changesRecurrence: wholeSeries)
+                try store.save(event, span: Self.ekSpan(span), commit: true)
+            }
+        }
+    }
+
+    public func delete(_ item: TimelineItem, span: EditSpan) async throws {
+        switch item.kind {
+        case .reminder:
+            try store.remove(try fetchReminder(item), commit: true)
+        case .event:
+            try store.remove(try fetchEvent(item), span: Self.ekSpan(span), commit: true)
         }
     }
 
@@ -110,6 +122,112 @@ public final class EventKitRepository: CalendarSource {
                 }
         }
         return writable(.reminder, as: .reminder) + writable(.event, as: .event)
+    }
+
+    // MARK: - 書き込みの共通部分
+
+    /// 途中で失敗したら、変更しかけたオブジェクトをストアのキャッシュから戻す。
+    /// 戻さないと次の取得で未保存の値が見えてしまう。
+    private func commit(_ body: () throws -> Void) throws {
+        do {
+            try body()
+        } catch {
+            store.reset()
+            throw error
+        }
+    }
+
+    private func fetchReminder(_ item: TimelineItem) throws -> EKReminder {
+        guard let reminder = store.calendarItem(withIdentifier: item.calendarItemIdentifier) as? EKReminder else {
+            throw CalendarSourceError.itemNotFound
+        }
+        return reminder
+    }
+
+    /// 繰り返し予定の特定の回は `calendarItem(withIdentifier:)` では取れない（先頭の回が返る）ため、
+    /// その回の時間帯で検索して開始時刻が一致するものを選ぶ。
+    private func fetchEvent(_ item: TimelineItem) throws -> EKEvent {
+        guard let start = item.start else { throw CalendarSourceError.itemNotFound }
+        let end = item.end.map { max($0, start.addingTimeInterval(1)) } ?? start.addingTimeInterval(1)
+        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+        let match = store.events(matching: predicate).first {
+            $0.calendarItemIdentifier == item.calendarItemIdentifier && $0.startDate == start
+        }
+        guard let match else { throw CalendarSourceError.itemNotFound }
+        return match
+    }
+
+    /// `previous` は更新前の項目。nil なら新規。
+    private func apply(_ draft: ItemDraft, to reminder: EKReminder, previous: TimelineItem?) throws {
+        reminder.title = draft.title
+        reminder.notes = Self.normalizedNotes(draft.notes)
+        reminder.priority = draft.priority.rawValue
+        if let start = draft.start {
+            reminder.dueDateComponents = Self.dueComponents(for: start, allDay: draft.isAllDay, timeZone: timeZone)
+        } else {
+            reminder.dueDateComponents = nil
+        }
+        // 期日時刻の通知は純正リマインダーが出す。アラームが無いと時刻付きでも通知されない。
+        // 期日が変わったときだけ付け替え、「10分前」など相対のアラームには触らない
+        let dueChanged = previous.map { $0.start != draft.start || $0.isAllDay != draft.isAllDay } ?? true
+        if dueChanged {
+            reminder.alarms?.filter { $0.absoluteDate != nil }.forEach(reminder.removeAlarm)
+            if let start = draft.start, !draft.isAllDay {
+                reminder.addAlarm(EKAlarm(absoluteDate: start))
+            }
+        }
+        if !(previous?.hasCustomRecurrence ?? false) {
+            replaceRecurrence(of: reminder, with: draft.recurrence)
+        }
+    }
+
+    private func apply(_ draft: ItemDraft, to event: EKEvent, previous: TimelineItem?, changesRecurrence: Bool) throws {
+        guard let start = draft.start else { throw CalendarSourceError.eventNeedsStart }
+        event.title = draft.title
+        event.notes = Self.normalizedNotes(draft.notes)
+        event.startDate = start
+        event.endDate = draft.end ?? start
+        event.isAllDay = draft.isAllDay
+        if changesRecurrence, !(previous?.hasCustomRecurrence ?? false) {
+            replaceRecurrence(of: event, with: draft.recurrence)
+        }
+    }
+
+    /// 規則が実質同じなら触らない。作り直すと EventKit 側だけが持つ情報（週の始まりなど）が落ちる。
+    private func replaceRecurrence(of calendarItem: EKCalendarItem, with spec: RecurrenceSpec?) {
+        let current = calendarItem.recurrenceRules ?? []
+        if current.isEmpty, spec == nil { return }
+        if current.count == 1, let spec, RecurrenceSpec(rule: current[0]) == spec { return }
+        current.forEach(calendarItem.removeRecurrenceRule)
+        if let spec {
+            calendarItem.addRecurrenceRule(EKRecurrenceRule(spec))
+        }
+    }
+
+    /// 識別子があればそれ、なければ名前の一致で保存先を決める。どちらも無ければ nil（呼び出し側で既定か現状維持）。
+    private func resolveCalendar(_ draft: ItemDraft, for entity: EKEntityType) throws -> EKCalendar? {
+        if let id = draft.calendarID {
+            guard let calendar = store.calendar(withIdentifier: id),
+                  calendar.allowedEntityTypes.contains(entity == .event ? .event : .reminder),
+                  calendar.allowsContentModifications
+            else { throw CalendarSourceError.noCalendar }
+            return calendar
+        }
+        return try calendar(named: draft.listName, for: entity)
+    }
+
+    private static func ekSpan(_ span: EditSpan) -> EKSpan {
+        switch span {
+        case .thisOccurrence: .thisEvent
+        case .futureOccurrences: .futureEvents
+        }
+    }
+
+    /// 空白だけのメモは nil にする。
+    private static func normalizedNotes(_ notes: String?) -> String? {
+        guard let notes else { return nil }
+        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : notes
     }
 
     /// 名前でカレンダー／リストを探す。名前が無ければ nil（呼び出し側で既定にする）。

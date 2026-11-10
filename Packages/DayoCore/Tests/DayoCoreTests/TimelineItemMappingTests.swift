@@ -58,9 +58,41 @@ private func iso(_ string: String) -> Date {
         event.endDate = Date(timeIntervalSince1970: 7 * 86_400 + 3_600)
         let b = TimelineItem(event: event)
 
-        #expect(a.recurrence === rule)
+        #expect(a.recurrence == RecurrenceSpec(frequency: .weekly))
+        #expect(a.hasRecurrence)
         #expect(a.calendarItemIdentifier == b.calendarItemIdentifier)
         #expect(a.id != b.id)
+    }
+
+    @Test func reminderPriorityIsRoundedToFourLevels() {
+        let reminder = EKReminder(eventStore: store)
+        reminder.title = "重要"
+        reminder.calendar = makeCalendar(.reminder, title: "仕事")
+        reminder.priority = 1
+        #expect(TimelineItem(reminder: reminder).priority == .high)
+        reminder.priority = 5
+        #expect(TimelineItem(reminder: reminder).priority == .medium)
+        reminder.priority = 7
+        #expect(TimelineItem(reminder: reminder).priority == .low)
+        reminder.priority = 0
+        #expect(TimelineItem(reminder: reminder).priority == ReminderPriority.none)
+    }
+
+    @Test func unsupportedRecurrenceIsKeptAsCustom() {
+        let event = EKEvent(eventStore: store)
+        event.title = "誕生日"
+        event.startDate = Date(timeIntervalSince1970: 0)
+        event.endDate = Date(timeIntervalSince1970: 3_600)
+        event.addRecurrenceRule(EKRecurrenceRule(recurrenceWith: .yearly, interval: 1, end: nil))
+        event.notes = "ケーキ"
+        event.calendar = makeCalendar(.event, title: "家族")
+
+        let item = TimelineItem(event: event)
+
+        #expect(item.recurrence == nil)
+        #expect(item.hasRecurrence)
+        #expect(item.notes == "ケーキ")
+        #expect(item.calendarIdentifier == event.calendar.calendarIdentifier)
     }
 
     @Test func reminderWithTimeMapsDueDateInDefaultTimeZone() {

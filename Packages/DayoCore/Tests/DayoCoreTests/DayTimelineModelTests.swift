@@ -31,6 +31,8 @@ private final class FakeSource: CalendarSource {
 
     func create(_ draft: ItemDraft) async throws {}
 
+    func update(_ item: TimelineItem, with draft: ItemDraft, span: EditSpan) async throws {}
+    func delete(_ item: TimelineItem, span: EditSpan) async throws {}
     func destinations() async throws -> [Destination] { [] }
 
     var changes: AsyncStream<Void> { AsyncStream { _ in } }

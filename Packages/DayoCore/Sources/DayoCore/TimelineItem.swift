@@ -1,5 +1,4 @@
 import CoreGraphics
-import EventKit
 import Foundation
 
 public enum ItemKind: Hashable, Sendable {
@@ -8,6 +7,7 @@ public enum ItemKind: Hashable, Sendable {
 }
 
 /// 予定とリマインダーを画面向けに統一した表現。永続化はしない（正は EventKit 側）。
+/// EventKit の型は持たず、Repository で変換する。
 public struct TimelineItem: Identifiable, Equatable {
     /// 画面上の一意キー。繰り返し予定は回ごとに異なる値になる。
     public let id: String
@@ -27,9 +27,22 @@ public struct TimelineItem: Identifiable, Equatable {
     /// アカウント名（iCloud / Google など）。同名カレンダーの区別と接続確認に使う。
     public var accountName: String
     public var color: CGColor
-    public var recurrence: EKRecurrenceRule?
+    /// このアプリで編集できる形の繰り返し。表せない規則（年次・終了付きなど）は nil で `hasRecurrence` だけ true。
+    public var recurrence: RecurrenceSpec?
+    /// 何らかの繰り返し規則を持つか。`recurrence == nil` でも true ならカスタム規則。
+    public var hasRecurrence: Bool
     /// 共有リストか。
     public var isShared: Bool
+    public var notes: String?
+    /// 保存先のリスト／カレンダーの識別子（`Destination.id` と同じ）。
+    public var calendarIdentifier: String
+    /// 保存先が書き込み可能か。誕生日・祝日・購読カレンダーは false。
+    public var isEditable: Bool
+    /// reminder のみ。event は常に none。
+    public var priority: ReminderPriority
+
+    /// このアプリで表せない繰り返し規則を持つ。編集時に規則へ触らない。
+    public var hasCustomRecurrence: Bool { hasRecurrence && recurrence == nil }
 
     public init(
         id: String,
@@ -43,8 +56,13 @@ public struct TimelineItem: Identifiable, Equatable {
         sourceName: String,
         accountName: String,
         color: CGColor,
-        recurrence: EKRecurrenceRule?,
-        isShared: Bool
+        recurrence: RecurrenceSpec?,
+        isShared: Bool,
+        hasRecurrence: Bool? = nil,
+        notes: String? = nil,
+        calendarIdentifier: String = "",
+        isEditable: Bool = true,
+        priority: ReminderPriority = .none
     ) {
         self.id = id
         self.calendarItemIdentifier = calendarItemIdentifier
@@ -58,7 +76,12 @@ public struct TimelineItem: Identifiable, Equatable {
         self.accountName = accountName
         self.color = color
         self.recurrence = recurrence
+        self.hasRecurrence = hasRecurrence ?? (recurrence != nil)
         self.isShared = isShared
+        self.notes = notes
+        self.calendarIdentifier = calendarIdentifier
+        self.isEditable = isEditable
+        self.priority = priority
     }
 
     /// 期間の日に表示すべきか。期日で判定し、期日なしのリマインダーは時間軸に載せない。

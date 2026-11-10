@@ -105,38 +105,6 @@ public protocol InputParser {
     func parse(_ text: String, reference: Date, calendar: Calendar) -> ParsedInput
 }
 
-/// 登録に渡す 1 件分。`CalendarSource.create` の入力。
-public struct ItemDraft: Equatable {
-    public var kind: ItemKind
-    public var title: String
-    /// event: 開始 / reminder: 期日。期日なしは nil。
-    public var start: Date?
-    /// event のみ。
-    public var end: Date?
-    public var isAllDay: Bool
-    public var recurrence: RecurrenceSpec?
-    /// リスト名（reminder）またはカレンダー名（event）の前方一致。nil なら既定。
-    public var listName: String?
-
-    public init(
-        kind: ItemKind,
-        title: String,
-        start: Date? = nil,
-        end: Date? = nil,
-        isAllDay: Bool = false,
-        recurrence: RecurrenceSpec? = nil,
-        listName: String? = nil
-    ) {
-        self.kind = kind
-        self.title = title
-        self.start = start
-        self.end = end
-        self.isAllDay = isAllDay
-        self.recurrence = recurrence
-        self.listName = listName
-    }
-}
-
 extension ParsedInput {
     /// 登録用に日時を確定する。
     /// 日付が無くても、時刻があれば今日、繰り返しがあれば次の該当日を期日にする。

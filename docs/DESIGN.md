@@ -71,10 +71,15 @@ struct TimelineItem: Identifiable {
     var sourceName: String      // リスト名 or カレンダー名
     var accountName: String     // iCloud / Google などアカウント名（同名カレンダーの区別）
     var color: CGColor
-    var recurrence: EKRecurrenceRule?
+    var recurrence: RecurrenceSpec?  // 編集できる形の繰り返し。表せない規則は nil
+    var hasRecurrence: Bool     // 何らかの繰り返しがあるか（nil かつ true ならカスタム規則）
     var isShared: Bool          // 共有リストか
+    var notes: String?
+    var calendarIdentifier: String   // 保存先リスト／カレンダーの識別子
 }
 ```
+
+`TimelineItem` は EventKit の型を持たない（`EKRecurrenceRule` も `RecurrenceSpec` に変換する）。画面とテストが EventKit に触れずに済ませるため。年次や終了付きなど `RecurrenceSpec` で表せない規則は「カスタム」として表示だけし、編集時に触らない。
 
 | 項目 | EKEvent | EKReminder |
 | --- | --- | --- |

@@ -15,6 +15,8 @@ private final class RecordingSource: CalendarSource {
         if let createError { throw createError }
         drafts.append(draft)
     }
+    func update(_ item: TimelineItem, with draft: ItemDraft, span: EditSpan) async throws {}
+    func delete(_ item: TimelineItem, span: EditSpan) async throws {}
     func destinations() async throws -> [Destination] { destinationList }
     var changes: AsyncStream<Void> { AsyncStream { _ in } }
 }
