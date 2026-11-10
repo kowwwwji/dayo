@@ -7,6 +7,7 @@ struct RootView: View {
     let model: DayTimelineModel
     let quickInput: QuickInputModel
     let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
+    @AppStorage(TimelineStyle.storageKey) private var style: TimelineStyle = .grid
 
     var body: some View {
         #if os(macOS)
@@ -18,21 +19,33 @@ struct RootView: View {
             .navigationSplitViewColumnWidth(min: 160, ideal: 200)
         } detail: {
             VStack(spacing: 0) {
-                QuickInputBar(model: quickInput)
+                // 日付の移動と表示切替は入力欄と同じ行に置く。日付そのものはウィンドウタイトルに出す
+                QuickInputBar(model: quickInput) {
+                    DayNavigationControls(model: model)
+                    TimelineStylePicker(style: $style)
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 110)
+                }
                 Divider()
                 DayTimelineView(model: model, makeEditor: makeEditor)
             }
+            .navigationTitle(model.dayTitle)
         }
         #else
         TabView {
-            DayTimelineView(model: model, makeEditor: makeEditor)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    VStack(spacing: 0) {
-                        Divider()
-                        QuickInputBar(model: quickInput)
-                    }
+            NavigationStack {
+                DayTimelineView(model: model, makeEditor: makeEditor)
+                    .navigationTitle(model.dayTitle)
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 0) {
+                    Divider()
+                    QuickInputBar(model: quickInput)
                 }
-                .tabItem { Label("今日", systemImage: "sun.max") }
+            }
+            .tabItem { Label("今日", systemImage: "sun.max") }
         }
         #endif
     }

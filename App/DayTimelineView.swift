@@ -18,8 +18,11 @@ struct DayTimelineView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            #if os(iOS)
+            // Mac は日付をウィンドウタイトルに、移動と表示切替を入力欄の行に置くのでヘッダーは無い
             header
             Divider()
+            #endif
             if let message = model.errorMessage {
                 Text(message)
                     .font(.dayoSmall)
@@ -41,25 +44,15 @@ struct DayTimelineView: View {
         }
     }
 
+    #if os(iOS)
     private var header: some View {
         HStack(spacing: 12) {
-            Button { Task { await model.showPreviousDay() } } label: {
-                Image(systemName: "chevron.left")
-            }
-            Text(model.day.formatted(.dateTime.month().day().weekday(.wide)))
-                .font(.title3.weight(.semibold))
-                .frame(minWidth: 160)
-            Button { Task { await model.showNextDay() } } label: {
-                Image(systemName: "chevron.right")
-            }
-            Button("今日") { Task { await model.showToday() } }
-                .disabled(model.isToday)
+            DayNavigationControls(model: model)
             Spacer()
             TimelineStylePicker(style: $style)
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 100)
-            #if os(iOS)
+                .frame(width: 110)
             // iPhone には設定ウィンドウが無いのでここから開く（Mac は ⌘,）
             Button { showsSettings = true } label: {
                 Image(systemName: "gearshape")
@@ -73,12 +66,11 @@ struct DayTimelineView: View {
                         }
                 }
             }
-            #endif
         }
-        .buttonStyle(.borderless)
         .padding(.horizontal)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
     }
+    #endif
 
     @ViewBuilder
     private var content: some View {

@@ -1,13 +1,20 @@
 import DayoCore
 import SwiftUI
 
+/// Shift+Tab は Tab に shift が付くのではなく、この制御文字（逆 Tab）として届く。
+private let backTab = KeyEquivalent("\u{19}")
+
 /// 1 行入力と解釈チップ。Return で登録する。Mac は上部、iPhone は下部に常設する。
-struct QuickInputBar: View {
+/// `trailing` は入力欄の右に並べる部品（Mac では日付の移動と表示切替）。
+struct QuickInputBar<Trailing: View>: View {
     let model: QuickInputModel
+    @ViewBuilder let trailing: Trailing
     @FocusState private var isFocused: Bool
 
-    /// Shift+Tab は Tab に shift が付くのではなく、この制御文字（逆 Tab）として届く。
-    private static let backTab = KeyEquivalent("\u{19}")
+    init(model: QuickInputModel, @ViewBuilder trailing: () -> Trailing = { EmptyView() }) {
+        self.model = model
+        self.trailing = trailing()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -24,9 +31,9 @@ struct QuickInputBar: View {
                         Task { await model.submit() }
                     }
                     // Tab / Shift+Tab: 候補が出ている間はフォーカス移動ではなく候補の選択に使う
-                    .onKeyPress(keys: [.tab, Self.backTab]) { press in
+                    .onKeyPress(keys: [.tab, backTab]) { press in
                         guard !model.suggestions.isEmpty else { return .ignored }
-                        if press.key == Self.backTab || press.modifiers.contains(.shift) {
+                        if press.key == backTab || press.modifiers.contains(.shift) {
                             model.selectPreviousSuggestion()
                         } else {
                             model.selectNextSuggestion()
@@ -36,6 +43,7 @@ struct QuickInputBar: View {
                 if model.isSubmitting {
                     ProgressView().controlSize(.small)
                 }
+                trailing
             }
             if !model.suggestions.isEmpty {
                 suggestions
