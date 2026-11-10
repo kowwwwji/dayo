@@ -57,8 +57,18 @@ extension TimelineItem {
             notes: reminder.notes,
             calendarIdentifier: reminder.calendar?.calendarIdentifier ?? "",
             isEditable: reminder.calendar?.allowsContentModifications ?? false,
-            priority: ReminderPriority(ekPriority: reminder.priority)
+            priority: ReminderPriority(ekPriority: reminder.priority),
+            earlyReminderMinutes: Self.earlyReminderMinutes(from: reminder.alarms ?? [])
         )
+    }
+
+    /// 早期リマインダーとみなすアラームのうち最も早いものの分。1 分未満は無し扱い。
+    static func earlyReminderMinutes(from alarms: [EKAlarm]) -> Int? {
+        alarms
+            .filter(\.isEarlyReminder)
+            .map { Int((-$0.relativeOffset / 60).rounded()) }
+            .filter { $0 > 0 }
+            .max()
     }
 
     /// 規則が 1 つで、このアプリで表せるときだけ編集可能な形にする。複数あればカスタム扱い。
@@ -73,5 +83,13 @@ extension TimelineItem {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = components.timeZone ?? defaultTimeZone
         return calendar.date(from: components)
+    }
+}
+
+extension EKAlarm {
+    /// 期日より前に鳴る相対アラーム。場所ベース・絶対時刻・期日ちょうど以降のものは含めない。
+    /// 読む側と書く側で同じ判定を使い、付け替えで他の通知を消さないようにする。
+    var isEarlyReminder: Bool {
+        absoluteDate == nil && structuredLocation == nil && proximity == .none && relativeOffset < 0
     }
 }

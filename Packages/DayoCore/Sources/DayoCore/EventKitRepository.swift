@@ -176,9 +176,24 @@ public final class EventKitRepository: CalendarSource {
                 reminder.addAlarm(EKAlarm(absoluteDate: start))
             }
         }
+        // 早期リマインダー（期日より前の相対アラーム）は値が変わったときだけ付け替える。
+        // 期日が無いときは基準が無いので外す
+        if Self.shouldReplaceEarlyReminder(previous: previous, draft: draft) {
+            reminder.alarms?.filter(\.isEarlyReminder).forEach(reminder.removeAlarm)
+            if draft.start != nil, !draft.isAllDay, let minutes = draft.earlyReminderMinutes, minutes > 0 {
+                reminder.addAlarm(EKAlarm(relativeOffset: TimeInterval(-minutes * 60)))
+            }
+        }
         if !(previous?.hasCustomRecurrence ?? false) {
             replaceRecurrence(of: reminder, with: draft.recurrence)
         }
+    }
+
+    /// 新規なら常に、更新なら早期リマインダーの値が変わったときだけ相対アラームを付け替える。
+    /// 期日を外す・時刻なしにする場合は draft 側が nil になるので、ここで変化として拾える。
+    static func shouldReplaceEarlyReminder(previous: TimelineItem?, draft: ItemDraft) -> Bool {
+        guard let previous else { return true }
+        return previous.earlyReminderMinutes != draft.earlyReminderMinutes
     }
 
     private func apply(_ draft: ItemDraft, to event: EKEvent, previous: TimelineItem?, changesRecurrence: Bool) throws {

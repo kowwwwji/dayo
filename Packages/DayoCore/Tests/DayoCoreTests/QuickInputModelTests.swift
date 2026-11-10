@@ -186,6 +186,29 @@ private let reference = tokyo.date(from: DateComponents(year: 2026, month: 11, d
         #expect(model.selectedSuggestionID == nil)
     }
 
+    @Test func defaultEarlyReminderAppliesOnlyToTimedReminders() async {
+        let source = RecordingSource()
+        let model = makeModel(source)
+        model.defaultEarlyReminderMinutes = 15
+
+        model.text = "明日 15時 歯医者"
+        await model.submit()
+        #expect(source.drafts.last?.earlyReminderMinutes == 15)
+
+        model.text = "明日 歯医者"
+        await model.submit()
+        #expect(source.drafts.last?.earlyReminderMinutes == nil)
+
+        model.text = "明日 15時 面談 @予定"
+        await model.submit()
+        #expect(source.drafts.last?.earlyReminderMinutes == nil)
+
+        model.defaultEarlyReminderMinutes = 0
+        model.text = "明日 15時 歯医者"
+        await model.submit()
+        #expect(source.drafts.last?.earlyReminderMinutes == nil)
+    }
+
     @Test func submitWithoutTitleIsRejected() async {
         let source = RecordingSource()
         let model = makeModel(source)
@@ -209,6 +232,36 @@ private let reference = tokyo.date(from: DateComponents(year: 2026, month: 11, d
         let allDay = EventKitRepository.dueComponents(for: start, allDay: true, timeZone: tokyo.timeZone)
         #expect(allDay.hour == nil)
         #expect(allDay.day == 11)
+    }
+
+    @Test func earlyReminderAlarmsAreReplacedOnlyWhenTheValueChanges() {
+        func item(_ minutes: Int?, dated: Bool = true) -> TimelineItem {
+            TimelineItem(
+                id: "x", calendarItemIdentifier: "x", kind: .reminder, title: "", start: dated ? Date() : nil, end: nil,
+                isAllDay: false, isCompleted: false, sourceName: "", accountName: "",
+                color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false, earlyReminderMinutes: minutes
+            )
+        }
+        func draft(_ minutes: Int?, dated: Bool = true) -> ItemDraft {
+            ItemDraft(kind: .reminder, title: "", start: dated ? Date() : nil, earlyReminderMinutes: minutes)
+        }
+        // 新規は常に付ける。更新は値が変わったときだけ。期日が消えたら外す
+        #expect(EventKitRepository.shouldReplaceEarlyReminder(previous: nil, draft: draft(15)))
+        #expect(EventKitRepository.shouldReplaceEarlyReminder(previous: item(15), draft: draft(15)) == false)
+        #expect(EventKitRepository.shouldReplaceEarlyReminder(previous: item(15), draft: draft(60)))
+        #expect(EventKitRepository.shouldReplaceEarlyReminder(previous: item(nil), draft: draft(nil)) == false)
+        // 期日を外した・時刻なしにした場合はエディタが draft を nil にするので変化として拾う
+        #expect(EventKitRepository.shouldReplaceEarlyReminder(previous: item(15), draft: draft(nil, dated: false)))
+    }
+
+    @Test func earlyReminderLabels() {
+        #expect(EarlyReminder(minutes: nil) == .none)
+        #expect(EarlyReminder(minutes: 0) == .none)
+        #expect(EarlyReminder(minutes: 15).label == "15分前")
+        #expect(EarlyReminder(minutes: 120).label == "2時間前")
+        #expect(EarlyReminder(minutes: 1440).label == "1日前")
+        #expect(EarlyReminder.none.label == "なし")
+        #expect(EarlyReminder(minutes: 45).minutes == 45)
     }
 
     @Test func calendarMatchPrefersExactThenPrefixIgnoringCase() {

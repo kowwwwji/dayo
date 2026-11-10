@@ -21,6 +21,8 @@ public final class QuickInputModel {
     public private(set) var destinations: [Destination] = []
     /// 登録に成功したあとに呼ぶ。タイムライン側の即時再読み込みに使う。
     public var onCreated: (@MainActor () async -> Void)?
+    /// 時刻付きリマインダーに付ける既定の早期リマインダー（分）。0 なら付けない。設定画面の値を画面が流し込む
+    public var defaultEarlyReminderMinutes = 0
 
     private let source: CalendarSource
     private let parser: InputParser
@@ -69,8 +71,12 @@ public final class QuickInputModel {
         }
         isSubmitting = true
         defer { isSubmitting = false }
+        var draft = parsed.draft(reference: reference, calendar: calendar)
+        if draft.kind == .reminder, draft.start != nil, !draft.isAllDay, defaultEarlyReminderMinutes > 0 {
+            draft.earlyReminderMinutes = defaultEarlyReminderMinutes
+        }
         do {
-            try await source.create(parsed.draft(reference: reference, calendar: calendar))
+            try await source.create(draft)
         } catch {
             errorMessage = error.localizedDescription
             return

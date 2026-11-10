@@ -78,6 +78,44 @@ private func iso(_ string: String) -> Date {
         #expect(TimelineItem(reminder: reminder).priority == ReminderPriority.none)
     }
 
+    @Test func earlyReminderComesFromTheEarliestNegativeRelativeAlarm() {
+        let reminder = EKReminder(eventStore: store)
+        reminder.title = "会議"
+        reminder.calendar = makeCalendar(.reminder, title: "仕事")
+        reminder.dueDateComponents = DateComponents(year: 2026, month: 11, day: 10, hour: 9)
+        #expect(TimelineItem(reminder: reminder).earlyReminderMinutes == nil)
+
+        // 期日ちょうどの絶対アラームは数えない
+        reminder.addAlarm(EKAlarm(absoluteDate: Date()))
+        #expect(TimelineItem(reminder: reminder).earlyReminderMinutes == nil)
+
+        reminder.addAlarm(EKAlarm(relativeOffset: -15 * 60))
+        #expect(TimelineItem(reminder: reminder).earlyReminderMinutes == 15)
+
+        // 複数あれば最も早いもの。期日後（正）のものは無視
+        reminder.addAlarm(EKAlarm(relativeOffset: -60 * 60))
+        reminder.addAlarm(EKAlarm(relativeOffset: 10 * 60))
+        #expect(TimelineItem(reminder: reminder).earlyReminderMinutes == 60)
+    }
+
+    @Test func locationAndTinyOffsetAlarmsAreNotEarlyReminders() {
+        let reminder = EKReminder(eventStore: store)
+        reminder.calendar = makeCalendar(.reminder, title: "家")
+        reminder.dueDateComponents = DateComponents(year: 2026, month: 11, day: 10, hour: 9)
+
+        // 場所ベースの通知（到着時）。relativeOffset は 0 だが絶対時刻でもない
+        let home = EKAlarm(relativeOffset: 0)
+        home.structuredLocation = EKStructuredLocation(title: "自宅")
+        home.proximity = .enter
+        reminder.addAlarm(home)
+        #expect(home.isEarlyReminder == false)
+        #expect(TimelineItem(reminder: reminder).earlyReminderMinutes == nil)
+
+        // 1 分未満は無し扱い（0 を返さない）
+        reminder.addAlarm(EKAlarm(relativeOffset: -20))
+        #expect(TimelineItem(reminder: reminder).earlyReminderMinutes == nil)
+    }
+
     @Test func unsupportedRecurrenceIsKeptAsCustom() {
         let event = EKEvent(eventStore: store)
         event.title = "誕生日"

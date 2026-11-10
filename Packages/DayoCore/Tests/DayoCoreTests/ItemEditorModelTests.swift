@@ -134,6 +134,30 @@ private func item(
         #expect(model.errorMessage == "繰り返しのあるリマインダーには期日が必要です")
     }
 
+    @Test func earlyReminderFollowsTheDueDate() async {
+        var reminderItem = item(kind: .reminder, start: tuesday10)
+        reminderItem.earlyReminderMinutes = 15
+        let model = makeModel(reminderItem)
+        #expect(model.earlyReminderMinutes == 15)
+        #expect(model.draft.earlyReminderMinutes == 15)
+
+        model.earlyReminderMinutes = 60
+        #expect(model.draft.earlyReminderMinutes == 60)
+
+        // 期日を外す・時刻なしにすると鳴る時刻が定まらないので付けない。なし（0）は nil
+        model.hasDate = false
+        #expect(model.draft.earlyReminderMinutes == nil)
+        model.hasDate = true
+        model.isAllDay = true
+        #expect(model.draft.earlyReminderMinutes == nil)
+        model.isAllDay = false
+        model.earlyReminderMinutes = 0
+        #expect(model.draft.earlyReminderMinutes == nil)
+
+        let event = makeModel(item(kind: .event, start: tuesday10, end: date(2026, 11, 10, 11)))
+        #expect(event.draft.earlyReminderMinutes == nil)
+    }
+
     @Test func priorityIsSentForRemindersOnly() async {
         let source = EditingSource()
         let reminder = makeModel(item(kind: .reminder, start: tuesday10), source: source)

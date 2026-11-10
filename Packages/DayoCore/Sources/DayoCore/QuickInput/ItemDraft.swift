@@ -17,6 +17,8 @@ public struct ItemDraft: Equatable {
     public var notes: String?
     /// reminder のみ。
     public var priority: ReminderPriority
+    /// reminder のみ。期日の何分前に通知するか。nil なら無し。
+    public var earlyReminderMinutes: Int?
 
     public init(
         kind: ItemKind,
@@ -28,7 +30,8 @@ public struct ItemDraft: Equatable {
         listName: String? = nil,
         calendarID: String? = nil,
         notes: String? = nil,
-        priority: ReminderPriority = .none
+        priority: ReminderPriority = .none,
+        earlyReminderMinutes: Int? = nil
     ) {
         self.kind = kind
         self.title = title
@@ -40,6 +43,7 @@ public struct ItemDraft: Equatable {
         self.calendarID = calendarID
         self.notes = notes
         self.priority = priority
+        self.earlyReminderMinutes = earlyReminderMinutes
     }
 }
 
@@ -56,7 +60,8 @@ extension ItemDraft {
             isAllDay: false,
             recurrence: item.recurrence,
             notes: item.notes,
-            priority: item.priority
+            priority: item.priority,
+            earlyReminderMinutes: item.earlyReminderMinutes
         )
     }
 }

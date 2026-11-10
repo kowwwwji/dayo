@@ -150,7 +150,7 @@ struct ParsedInput {
 - **権限**: `requestFullAccessToReminders()` と `requestFullAccessToEvents()`。Info.plistに `NSRemindersFullAccessUsageDescription` と `NSCalendarsFullAccessUsageDescription`。MacはApp Sandboxのカレンダー・リマインダーentitlementも必要
 - **Googleカレンダー**: macOS/iOSの「インターネットアカウント」にGoogleを追加し、EventKit経由で読み書き。反映に数分の遅れあり
 - **共有**: iCloud共有リストの中身は読み書き可能。メンバー招待は純正リマインダーで行う
-- **通知**: リマインダーに `EKAlarm` を付ければ、純正アプリ側が通知する。自作アプリは通知を出さない
+- **通知**: リマインダーに `EKAlarm` を付ければ、純正アプリ側が通知する。自作アプリは通知を出さない。早期リマインダー（期日の N 分前）は負の相対オフセットの `EKAlarm` で表し、クイック入力の既定値は設定で選ぶ
 - **繰り返し予定の編集**: `save(_:span:)` で `.thisEvent` / `.futureEvents` を選ぶ
 
 EventKitから扱えない項目（確認時点はiOS 17〜18世代、着手時に最新SDKで再確認）：

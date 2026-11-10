@@ -32,6 +32,8 @@ public final class ItemEditorModel {
     public var destinationID: String
     /// reminder のみ。
     public var priority: ReminderPriority
+    /// reminder のみ。0 なら無し。
+    public var earlyReminderMinutes: Int
     public private(set) var destinations: [Destination] = []
     public private(set) var isSaving = false
     public private(set) var errorMessage: String?
@@ -61,6 +63,7 @@ public final class ItemEditorModel {
         end = item.end ?? calendar.date(byAdding: .hour, value: 1, to: startValue) ?? startValue
         destinationID = item.calendarIdentifier
         priority = item.priority
+        earlyReminderMinutes = item.earlyReminderMinutes ?? 0
         recurrence = .none
         recurrence = Self.option(for: item, calendar: calendar)
     }
@@ -169,7 +172,9 @@ public final class ItemEditorModel {
             recurrence: recurrenceForDraft,
             calendarID: destinationID.isEmpty ? nil : destinationID,
             notes: notes,
-            priority: item.kind == .reminder ? priority : .none
+            priority: item.kind == .reminder ? priority : .none,
+            // 時刻なしの期日は鳴る時刻が定まらないので付けない
+            earlyReminderMinutes: item.kind == .reminder && usesDate && !isAllDay && earlyReminderMinutes > 0 ? earlyReminderMinutes : nil
         )
     }
 
