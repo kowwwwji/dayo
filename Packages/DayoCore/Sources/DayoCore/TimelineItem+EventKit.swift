@@ -41,6 +41,7 @@ extension TimelineItem {
             // 時刻のない期日は終日扱い
             isAllDay: due != nil && due?.hour == nil,
             isCompleted: reminder.isCompleted,
+            completionDate: reminder.completionDate,
             sourceName: reminder.calendar?.title ?? "",
             accountName: reminder.calendar?.source?.title ?? "",
             color: reminder.calendar?.cgColor ?? Self.fallbackColor,
@@ -56,11 +57,5 @@ extension TimelineItem {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = components.timeZone ?? defaultTimeZone
         return calendar.date(from: components)
-    }
-
-    /// 期間内に表示すべきか。期日なしは常に含め、`range.end`（翌日 0:00）は含めない。
-    public func falls(in range: DateInterval) -> Bool {
-        guard let start else { return true }
-        return start >= range.start && start < range.end
     }
 }

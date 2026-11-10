@@ -24,12 +24,35 @@ extension AccessStatus {
     }
 }
 
+public enum CalendarSourceError: Error, Equatable {
+    /// 取得元に該当する項目が無い（他端末で削除された等）。
+    case itemNotFound
+    /// リマインダーにしか使えない操作を予定に対して行った。
+    case notAReminder
+}
+
+/// 1 回の取得結果。`items` は期間に属するもの、`overdue` は期間より前に期日が過ぎた未完了リマインダー。
+public struct TimelineSnapshot: Equatable {
+    public var items: [TimelineItem]
+    public var overdue: [TimelineItem]
+
+    public init(items: [TimelineItem], overdue: [TimelineItem]) {
+        self.items = items
+        self.overdue = overdue
+    }
+
+    public static let empty = TimelineSnapshot(items: [], overdue: [])
+}
+
 /// 予定・リマインダーの取得元。画面はこの protocol と TimelineItem だけを扱う。
 public protocol CalendarSource {
     /// 予定とリマインダーの権限をまとめて要求し、結果の状態を返す。
     func requestAccess() async throws -> AccessStatus
-    /// 期間内の予定・リマインダーと、期日なしリマインダーを返す。
-    func items(in range: DateInterval) async throws -> [TimelineItem]
+    /// 期間に属する予定・リマインダー（`TimelineItem.falls(in:)` の規則）を 1 回の取得で返す。
+    /// `includingOverdue` なら期間より前に期日が過ぎた未完了リマインダーも `overdue` に入れる。
+    func snapshot(for range: DateInterval, includingOverdue: Bool) async throws -> TimelineSnapshot
+    /// リマインダーの完了状態を変える。反映は呼び出し側で再取得する。
+    func setCompleted(_ completed: Bool, for item: TimelineItem) async throws
     /// 取得元に変更があったときに値を流す。受け取ったら表示中の期間を再取得する。
     var changes: AsyncStream<Void> { get }
 }
