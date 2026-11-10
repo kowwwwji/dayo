@@ -300,6 +300,7 @@ private struct GridItemView: View {
                         .strikethrough(item.isCompleted)
                         .foregroundStyle(item.isCompleted ? .secondary : .primary)
                         .lineLimit(1)
+                    EarlyReminderMark(minutes: item.earlyReminderMinutes)
                     Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())

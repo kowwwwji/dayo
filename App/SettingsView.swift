@@ -5,11 +5,19 @@ struct SettingsView: View {
     @AppStorage(DayHours.startKey) private var startHour = DayHours.defaultStart
     @AppStorage(DayHours.endKey) private var endHour = DayHours.defaultEnd
     @AppStorage(DayTitle.showsWeekNumberKey) private var showsWeekNumber = true
+    @AppStorage(EarlyReminderSetting.key) private var defaultEarlyReminder = EarlyReminderSetting.defaultMinutes
 
     var body: some View {
         Form {
             Section("日付") {
                 Toggle("週番号を表示", isOn: $showsWeekNumber)
+            }
+            Section {
+                EarlyReminderPicker("既定の早期リマインダー", minutes: $defaultEarlyReminder)
+            } header: {
+                Text("リマインダー")
+            } footer: {
+                Text("クイック入力で時刻付きのリマインダーを登録したとき、この分だけ前にも通知します。")
             }
             Section {
                 DayHoursPicker(startHour: $startHour, endHour: $endHour)

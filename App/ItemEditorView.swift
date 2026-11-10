@@ -85,6 +85,9 @@ struct ItemEditorView: View {
                             Text(priority.label).tag(priority)
                         }
                     }
+                    if model.hasDate, !model.isAllDay {
+                        EarlyReminderPicker("早期リマインダー", minutes: $model.earlyReminderMinutes)
+                    }
                 }
                 Picker("繰り返し", selection: $model.recurrence) {
                     ForEach(model.recurrenceOptions, id: \.self) { option in

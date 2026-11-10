@@ -31,6 +31,7 @@ struct AllDayChip: View {
                 .lineLimit(1)
                 .strikethrough(item.isCompleted)
                 .foregroundStyle(item.isCompleted ? .secondary : .primary)
+            EarlyReminderMark(minutes: item.earlyReminderMinutes)
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 4)

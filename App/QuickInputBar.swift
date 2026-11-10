@@ -10,6 +10,7 @@ struct QuickInputBar<Trailing: View>: View {
     let model: QuickInputModel
     @ViewBuilder let trailing: Trailing
     @FocusState private var isFocused: Bool
+    @AppStorage(EarlyReminderSetting.key) private var defaultEarlyReminder = EarlyReminderSetting.defaultMinutes
 
     init(model: QuickInputModel, @ViewBuilder trailing: () -> Trailing = { EmptyView() }) {
         self.model = model
@@ -60,6 +61,8 @@ struct QuickInputBar<Trailing: View>: View {
         .padding(.vertical, 8)
         .background(.bar)
         .task { await model.loadDestinations() }
+        .onAppear { model.defaultEarlyReminderMinutes = defaultEarlyReminder }
+        .onChange(of: defaultEarlyReminder) { _, new in model.defaultEarlyReminderMinutes = new }
         // 表示時は権限待ちで空だったり、純正アプリでリストが増えたりするので、印を打つたびに読み直す
         .onChange(of: model.hasTrailingMarker) { _, hasMarker in
             guard hasMarker else { return }

@@ -18,6 +18,7 @@ struct TimelineRow: View {
                     Text(item.title)
                         .strikethrough(item.isCompleted)
                         .foregroundStyle(item.isCompleted ? .secondary : .primary)
+                    EarlyReminderMark(minutes: item.earlyReminderMinutes)
                 }
                 HStack(spacing: 6) {
                     if let time = timeText {
