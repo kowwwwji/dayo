@@ -9,7 +9,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("日付") {
-                Toggle("週番号を表示（例: 46w）", isOn: $showsWeekNumber)
+                Toggle("週番号を表示", isOn: $showsWeekNumber)
             }
             Section {
                 DayHoursPicker(startHour: $startHour, endHour: $endHour)

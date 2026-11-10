@@ -25,7 +25,7 @@ struct DayNavigationControls: View {
     }
 }
 
-/// ウィンドウや画面のタイトルに出す日付。「2026 / 11 / 10(火) 46w」の形。
+/// ウィンドウや画面のタイトルに出す日付。「2026 / 11 / 10 (火) 46w」の形。
 /// 年は西暦（システムが和暦でも）。週番号は ISO 8601（月曜始まり）。設定で消せる。
 enum DayTitle {
     static let showsWeekNumberKey = "showsWeekNumber"
@@ -35,7 +35,7 @@ enum DayTitle {
         calendar.timeZone = .autoupdatingCurrent
         let parts = calendar.dateComponents([.year, .month, .day], from: day)
         let weekday = day.formatted(.dateTime.weekday(.narrow).locale(Locale(identifier: "ja_JP")))
-        var text = "\(parts.year ?? 0) / \(parts.month ?? 0) / \(parts.day ?? 0)(\(weekday))"
+        var text = "\(parts.year ?? 0) / \(parts.month ?? 0) / \(parts.day ?? 0) (\(weekday))"
         if showsWeekNumber {
             let week = Calendar(identifier: .iso8601).component(.weekOfYear, from: day)
             text += " \(week)w"
