@@ -25,9 +25,9 @@ struct AllDayChip: View {
                 .accessibilityLabel(item.isCompleted ? "未完了に戻す" : "完了にする")
             }
             PriorityMark(priority: item.priority)
-                .font(.dayoSmall)
+                .font(.dayoTitle)
             Text(item.title)
-                .font(.dayoSmall)
+                .font(.dayoTitle)
                 .lineLimit(1)
                 .strikethrough(item.isCompleted)
                 .foregroundStyle(item.isCompleted ? .secondary : .primary)

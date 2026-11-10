@@ -266,7 +266,7 @@ private struct GridItemView: View {
                 Rectangle().fill(color).frame(width: 3)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.title)
-                        .font(.dayoSmall.weight(.semibold))
+                        .font(.dayoTitle.weight(.semibold))
                         .lineLimit(placement.durationMinutes >= 60 ? 2 : 1)
                     if placement.durationMinutes >= 45, let start = item.start, let end = item.end {
                         Text("\(start.formatted(date: .omitted, time: .shortened))–\(end.formatted(date: .omitted, time: .shortened))")
@@ -294,9 +294,9 @@ private struct GridItemView: View {
                 .accessibilityLabel(item.isCompleted ? "未完了に戻す" : "完了にする")
                 HStack(spacing: 4) {
                     PriorityMark(priority: item.priority)
-                        .font(.dayoSmall)
+                        .font(.dayoTitle)
                     Text(item.title)
-                        .font(.dayoSmall)
+                        .font(.dayoTitle)
                         .strikethrough(item.isCompleted)
                         .foregroundStyle(item.isCompleted ? .secondary : .primary)
                         .lineLimit(1)
