@@ -15,7 +15,17 @@ struct QuickInputBar: View {
                 TextField("例: 明日 15時 歯医者 #家族 ／ 金曜 10時-11時 面談 @個人的", text: Bindable(model).text)
                     .textFieldStyle(.plain)
                     .focused($isFocused)
-                    .onSubmit { Task { await model.submit() } }
+                    // Return: Tab で候補を選んでいればそれを補完、そうでなければ登録
+                    .onSubmit {
+                        if model.applySelectedSuggestion() { return }
+                        Task { await model.submit() }
+                    }
+                    // Tab: 候補が出ている間はフォーカス移動ではなく候補の選択に使う
+                    .onKeyPress(.tab) {
+                        guard !model.suggestions.isEmpty else { return .ignored }
+                        model.selectNextSuggestion()
+                        return .handled
+                    }
                 if model.isSubmitting {
                     ProgressView().controlSize(.small)
                 }
@@ -59,7 +69,11 @@ struct QuickInputBar: View {
                         .font(.caption)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(.quaternary, in: Capsule())
+                        .background(
+                            destination.id == model.selectedSuggestionID ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary),
+                            in: Capsule()
+                        )
+                        .foregroundStyle(destination.id == model.selectedSuggestionID ? .white : .primary)
                     }
                     .buttonStyle(.plain)
                 }

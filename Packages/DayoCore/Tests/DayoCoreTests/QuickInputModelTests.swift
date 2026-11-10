@@ -144,6 +144,41 @@ private let reference = tokyo.date(from: DateComponents(year: 2026, month: 11, d
         #expect(model.text == "明日 歯医者 #家族 ")
     }
 
+    @Test func tabCyclesSuggestionsAndReturnAppliesTheSelectedOne() async {
+        let source = RecordingSource()
+        source.destinationList = [destination("家族", .reminder), destination("仕事", .reminder)]
+        let model = makeModel(source)
+        await model.loadDestinations()
+        model.text = "歯医者 #"
+
+        // 選んでいなければ Return は登録へ
+        #expect(model.applySelectedSuggestion() == false)
+
+        model.selectNextSuggestion()
+        #expect(model.selectedSuggestionID == destination("家族", .reminder).id)
+        model.selectNextSuggestion()
+        #expect(model.selectedSuggestionID == destination("仕事", .reminder).id)
+        model.selectNextSuggestion()
+        #expect(model.selectedSuggestionID == destination("家族", .reminder).id)
+
+        #expect(model.applySelectedSuggestion())
+        #expect(model.text == "歯医者 #家族 ")
+        #expect(model.selectedSuggestionID == nil)
+    }
+
+    @Test func editingTextDropsSelection() async {
+        let source = RecordingSource()
+        source.destinationList = [destination("家族", .reminder)]
+        let model = makeModel(source)
+        await model.loadDestinations()
+        model.text = "歯医者 #"
+        model.selectNextSuggestion()
+
+        model.text = "歯医者 #家"
+
+        #expect(model.selectedSuggestionID == nil)
+    }
+
     @Test func submitWithoutTitleIsRejected() async {
         let source = RecordingSource()
         let model = makeModel(source)

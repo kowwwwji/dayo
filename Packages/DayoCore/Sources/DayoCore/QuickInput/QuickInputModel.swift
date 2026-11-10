@@ -6,8 +6,15 @@ import Observation
 @Observable
 public final class QuickInputModel {
     public var text = "" {
-        didSet { if text != oldValue { errorMessage = nil } }
+        didSet {
+            if text != oldValue {
+                errorMessage = nil
+                selectedSuggestionID = nil
+            }
+        }
     }
+    /// Tab で選んでいる候補。入力が変わると外れる。
+    public private(set) var selectedSuggestionID: Destination.ID?
     public private(set) var isSubmitting = false
     public private(set) var errorMessage: String?
     /// 補完候補の元になる保存先一覧。`loadDestinations()` で取り直す。
@@ -97,6 +104,26 @@ public final class QuickInputModel {
     public func apply(_ destination: Destination) {
         guard let token = Self.trailingMarkerToken(in: text) else { return }
         text = text[..<token.range.lowerBound] + token.marker + destination.name + " "
+    }
+
+    /// Tab: 候補を順に選ぶ。末尾まで来たら先頭に戻る。
+    public func selectNextSuggestion() {
+        let current = suggestions
+        guard !current.isEmpty else { return }
+        if let id = selectedSuggestionID, let index = current.firstIndex(where: { $0.id == id }) {
+            selectedSuggestionID = current[(index + 1) % current.count].id
+        } else {
+            selectedSuggestionID = current[0].id
+        }
+    }
+
+    /// Return: 選んでいる候補があれば補完して true。無ければ false（呼び出し側は登録に進む）。
+    public func applySelectedSuggestion() -> Bool {
+        guard let id = selectedSuggestionID, let destination = suggestions.first(where: { $0.id == id }) else {
+            return false
+        }
+        apply(destination)
+        return true
     }
 
     /// 入力末尾に `#` か `@` の語があるか。候補一覧を読み直すきっかけに使う。
