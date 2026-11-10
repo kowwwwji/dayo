@@ -17,9 +17,12 @@ struct DayGridView: View {
     /// 表示中の範囲の内容が読み込み済みか。帯の有無が確定してから初期位置へスクロールする
     let isLoaded: Bool
     let editing: ItemEditing
+    let board: TimelineDragBoard
     let onToggle: (TimelineItem) -> Void
     /// ドラッグで落とした。繰り返し予定ならどの回に及ぶかも渡す
     let onMove: (GridMove, EditSpan) -> Void
+    /// 週表示の終日欄へ落とした。その日の終日にする
+    let onMakeAllDay: (TimelineItem, Date) -> Void
 
     private let hourHeight: CGFloat = 56
     private let collapsedHeight: CGFloat = 22
@@ -77,6 +80,8 @@ struct DayGridView: View {
 
     var body: some View {
         let axis = self.axis
+        // 終日欄から落とされた位置を日と時刻に直せるよう、いまの軸と日の並びを届けておく
+        let _ = (board.axis, board.days) = (axis, days)
         ScrollViewReader { proxy in
             ScrollView {
                 ZStack(alignment: .topLeading) {
@@ -100,8 +105,10 @@ struct DayGridView: View {
                     bands(axis)
                 }
                 .frame(height: axis.totalHeight, alignment: .top)
+                .onFrameChange { board.gridContentFrame = $0 }
                 .padding(.vertical, 8)
             }
+            .onFrameChange { board.gridVisibleFrame = $0 }
             .onAppear {
                 if isLoaded { scrollToStart(proxy) }
             }
@@ -297,13 +304,15 @@ struct DayGridView: View {
                     labelColumnWidth: labelWidth - 6,
                     distanceToGridLeft: x,
                     dayWidth: dayWidth,
+                    board: board,
                     onToggle: { onToggle(placement.item) },
                     dropTarget: { translation in
                         dropTarget(
                             for: placement, dayIndex: dayIndex, translation: translation, axis: axis, dayWidth: dayWidth
                         )
                     },
-                    onDrop: { target in requestMove(placement, from: dayIndex, to: target) }
+                    onDrop: { target in requestMove(placement, from: dayIndex, to: target) },
+                    onDropAllDay: { day in onMakeAllDay(placement.item, day) }
                 )
                 .frame(
                     width: max(0, columnWidth - 2),
@@ -367,26 +376,36 @@ private struct GridItemView: View {
     let labelColumnWidth: CGFloat
     let distanceToGridLeft: CGFloat
     let dayWidth: CGFloat
+    let board: TimelineDragBoard
     let onToggle: () -> Void
     /// 移動量（pt）から落とし先を求める
     let dropTarget: (CGSize) -> GridDropTarget
     let onDrop: (GridDropTarget) -> Void
+    /// 週表示の終日欄へ落とした。その日
+    let onDropAllDay: (Date) -> Void
 
     /// `@GestureState` はジェスチャが中断（スクロール開始・ウィンドウ切替）されても自動で 0 に戻る
     @GestureState private var translation: CGSize = .zero
+    /// ドラッグ中の位置（`TimelineDragBoard.space` の座標）。終日欄の上にいるかの判定に使う
+    @GestureState private var dragLocation: CGPoint?
 
     private var item: TimelineItem { placement.item }
     private var color: Color { Color(cgColor: item.color) }
     private var isDragging: Bool { translation != .zero }
 
     var body: some View {
-        let target = isDragging ? dropTarget(translation) : nil
+        // 終日欄の上にいる間は影のほうを見せるので、時刻は出さず項目は薄くする
+        let isOverAllDay = dragLocation.flatMap(board.allDayTarget(at:)) != nil
+        let target = isDragging && !isOverAllDay ? dropTarget(translation) : nil
         let shiftX = CGFloat(target?.dayOffset ?? 0) * dayWidth
         content
-            .opacity(item.isVirtual ? 0.45 : (isDragging ? 0.85 : 1))
+            .opacity(item.isVirtual ? 0.45 : isOverAllDay ? 0.3 : isDragging ? 0.85 : 1)
+            .onChange(of: isDragging) { _, dragging in
+                if !dragging { board.ghost = nil }
+            }
             .overlay(alignment: .topLeading) {
                 if let target {
-                    Text(Self.timeText(minute: target.minute))
+                    Text(timeText(minute: target.minute))
                         .font(.dayoDetail.monospacedDigit().weight(.semibold))
                         .foregroundStyle(.tint)
                         .frame(width: labelColumnWidth, alignment: .trailing)
@@ -481,13 +500,22 @@ private struct GridItemView: View {
     }
     #else
     private var moveGesture: some Gesture {
-        DragGesture(minimumDistance: 6)
+        DragGesture(minimumDistance: 6, coordinateSpace: .named(TimelineDragBoard.space))
             .updating($translation) { value, state, _ in state = value.translation }
-            .onEnded { value in onDrop(dropTarget(value.translation)) }
+            .updating($dragLocation) { value, state, _ in state = value.location }
+            .onChanged { value in
+                board.ghost = board.allDayTarget(at: value.location).map { _ in
+                    TimelineDragBoard.Ghost(title: item.title, color: item.color, label: "終日", location: value.location)
+                }
+            }
+            .onEnded { value in
+                board.ghost = nil
+                if let day = board.allDayTarget(at: value.location) {
+                    onDropAllDay(day)
+                } else {
+                    onDrop(dropTarget(value.translation))
+                }
+            }
     }
     #endif
-
-    private static func timeText(minute: Int) -> String {
-        String(format: "%d:%02d", minute / 60, minute % 60)
-    }
 }

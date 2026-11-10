@@ -7,7 +7,17 @@ struct AllDayChip: View {
     let item: TimelineItem
     let editing: ItemEditing
     var fillsWidth = false
+    /// ドラッグの設定。nil なら動かせない。
+    var drag: AllDayChipDrag?
     let onToggle: () -> Void
+
+    /// `@GestureState` はジェスチャが中断されても自動で nil に戻る
+    @GestureState private var dragValue: DragValue?
+
+    private struct DragValue {
+        let translation: CGSize
+        let location: CGPoint
+    }
 
     /// エディタを開く場所のキー。同じリマインダーが期限切れ欄にも出ることがあるので、そちらと区別する。
     private static let anchor = "allDay"
@@ -45,9 +55,84 @@ struct AllDayChip: View {
         .contentShape(Rectangle())
         .onEditGesture { editing.open(item, at: Self.anchor) }
         .itemEditor(for: item, editing, at: Self.anchor)
-        .opacity(item.isVirtual ? 0.45 : 1)
+        .opacity(item.isVirtual ? 0.45 : opacityWhileDragging)
+        .offset(x: shiftWhileDragging)
+        .zIndex(dragValue == nil ? 0 : 1)
+        #if os(macOS)
+        .gesture(isDraggable ? moveGesture : nil)
+        .onChange(of: dragValue == nil) { _, ended in
+            if ended { drag?.board.ghost = nil }
+        }
+        #endif
         .allowsHitTesting(!item.isVirtual)
     }
+}
+
+extension AllDayChip {
+    private var isDraggable: Bool { drag != nil && item.isEditable && !item.isVirtual }
+
+    /// 時間軸の上にいる間は影のほうを見せるので、チップは薄くする。
+    private var opacityWhileDragging: Double {
+        guard let dragValue else { return 1 }
+        return gridTarget(at: dragValue.location) == nil ? 0.85 : 0.3
+    }
+
+    /// 終日欄の中では日単位で横にずらして見せる。
+    private var shiftWhileDragging: CGFloat {
+        guard let dragValue, let drag, let dayWidth = drag.dayWidth, gridTarget(at: dragValue.location) == nil
+        else { return 0 }
+        return CGFloat(dayOffset(for: dragValue.translation, in: drag)) * dayWidth
+    }
+
+    private func gridTarget(at location: CGPoint) -> (day: Date, minute: Int)? {
+        // 予定は時間軸に落とすと 1 時間になる。リマインダーは長さが無い
+        drag?.board.gridTarget(at: location, duration: item.kind == .event ? 60 : 1)
+    }
+
+    private func dayOffset(for translation: CGSize, in drag: AllDayChipDrag) -> Int {
+        guard let dayWidth = drag.dayWidth, dayWidth > 0 else { return 0 }
+        let offset = Int((translation.width / dayWidth).rounded())
+        return max(drag.dayOffsets.lowerBound, min(drag.dayOffsets.upperBound, offset))
+    }
+
+    #if os(macOS)
+    private var moveGesture: some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .named(TimelineDragBoard.space))
+            .updating($dragValue) { value, state, _ in
+                state = DragValue(translation: value.translation, location: value.location)
+            }
+            .onChanged { value in
+                drag?.board.ghost = gridTarget(at: value.location).map { target in
+                    TimelineDragBoard.Ghost(
+                        title: item.title, color: item.color, label: timeText(minute: target.minute),
+                        location: value.location
+                    )
+                }
+            }
+            .onEnded { value in
+                guard let drag else { return }
+                drag.board.ghost = nil
+                if let target = gridTarget(at: value.location) {
+                    drag.onMakeTimed(target.day, target.minute)
+                } else {
+                    let offset = dayOffset(for: value.translation, in: drag)
+                    if offset != 0 { drag.onMoveDays(offset) }
+                }
+            }
+    }
+    #endif
+}
+
+/// 終日のチップのドラッグ。終日欄の中では日単位で動かし、時間軸へ落とすと時刻付きにする。
+struct AllDayChipDrag {
+    let board: TimelineDragBoard
+    /// 1 日分の幅。日表示のチップ並びでは nil（横には動かせない）
+    var dayWidth: CGFloat?
+    /// 表示中の日の中で動かせる日数の範囲
+    var dayOffsets: ClosedRange<Int> = 0...0
+    let onMoveDays: (Int) -> Void
+    /// 落とした日（その日の 0:00）と開始分
+    let onMakeTimed: (Date, Int) -> Void
 }
 
 /// 優先度の「!」。純正アプリと同じくアクセント色で、なしのときは何も出さない。

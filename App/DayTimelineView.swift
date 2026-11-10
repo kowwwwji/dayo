@@ -12,6 +12,13 @@ struct DayTimelineView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var editor: ItemEditorModel?
     @State private var editorAnchor: String?
+    @State private var board = TimelineDragBoard()
+    /// 繰り返し予定の日時を変える前に、どの回に及ぶかを聞いている間の保留
+    @State private var pendingChange: PendingChange?
+
+    private struct PendingChange {
+        let perform: (EditSpan) async -> Void
+    }
     @State private var showsSettings = false
 
     private var editing: ItemEditing {
@@ -91,15 +98,32 @@ struct DayTimelineView: View {
         VStack(spacing: 0) {
             if model.mode == .week {
                 // 列と見出しがずれないよう、日付はモデルの範囲ではなく実際に並んでいる列から取る
-                WeekHeaderView(days: model.columns.map(\.day), spans: model.allDaySpans, editing: editing) { item in
-                    Task { await model.toggleCompleted(item) }
-                }
+                WeekHeaderView(
+                    days: model.columns.map(\.day),
+                    spans: model.allDaySpans,
+                    editing: editing,
+                    board: board,
+                    onToggle: { item in Task { await model.toggleCompleted(item) } },
+                    onMoveDays: { item, days in
+                        change(item) { await model.moveAllDay(item, byDays: days, span: $0) }
+                    },
+                    onMakeTimed: makeTimed
+                )
                 Divider()
             } else if !model.timeline.allDay.isEmpty {
                 PinnedSection(title: "終日") {
                     FlowLayout(spacing: 6) {
                         ForEach(model.timeline.allDay) { item in
-                            AllDayChip(item: item, editing: editing) {
+                            // 日表示は列が 1 つなので横には動かせない。時間軸へ落とすことだけできる
+                            AllDayChip(
+                                item: item,
+                                editing: editing,
+                                drag: AllDayChipDrag(
+                                    board: board,
+                                    onMoveDays: { _ in },
+                                    onMakeTimed: { day, minute in makeTimed(item, day, minute) }
+                                )
+                            ) {
                                 Task { await model.toggleCompleted(item) }
                             }
                         }
@@ -116,6 +140,20 @@ struct DayTimelineView: View {
             }
             timed
         }
+        .overlay { DragGhostView(board: board) }
+        .coordinateSpace(name: TimelineDragBoard.space)
+        .confirmationDialog(
+            "繰り返しの予定です",
+            isPresented: Binding(get: { pendingChange != nil }, set: { if !$0 { pendingChange = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingChange
+        ) { pending in
+            Button("この回のみ") { Task { await pending.perform(.thisOccurrence) } }
+            Button("以降すべて") { Task { await pending.perform(.futureOccurrences) } }
+            Button("キャンセル", role: .cancel) {}
+        } message: { _ in
+            Text("どの回の日時を変えますか？")
+        }
         .overlay {
             // 週表示は空でも曜日と時間軸を見せる
             if model.mode == .day, model.hasLoaded, model.timeline.isEmpty {
@@ -125,10 +163,11 @@ struct DayTimelineView: View {
     }
 
     private var timed: some View {
-DayGridView(
+        DayGridView(
             columns: model.columns,
             isLoaded: model.isLoadedForRange,
             editing: editing,
+            board: board,
             onToggle: { item in Task { await model.toggleCompleted(item) } },
             onMove: { move, span in
                 Task {
@@ -136,8 +175,24 @@ DayGridView(
                         move.item, from: move.originDay, toDay: move.targetDay, startMinute: move.minute, span: span
                     )
                 }
+            },
+            onMakeAllDay: { item, day in
+                change(item) { await model.makeAllDay(item, onDay: day, span: $0) }
             }
         )
+    }
+
+    private func makeTimed(_ item: TimelineItem, _ day: Date, _ minute: Int) {
+        change(item) { await model.makeTimed(item, onDay: day, startMinute: minute, span: $0) }
+    }
+
+    /// 日時を変える。繰り返しの予定は回ごとに分けて変えられるので、先に範囲を聞く。
+    private func change(_ item: TimelineItem, _ perform: @escaping (EditSpan) async -> Void) {
+        if item.kind == .event, item.hasRecurrence {
+            pendingChange = PendingChange(perform: perform)
+        } else {
+            Task { await perform(.thisOccurrence) }
+        }
     }
 
     private func row(_ item: TimelineItem, isOverdue: Bool = false) -> some View {
