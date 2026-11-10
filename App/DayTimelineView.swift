@@ -153,7 +153,8 @@ private struct PinnedSection<Content: View>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(.horizontal)
+        // 左余白は付けない。グリッドの時刻ラベルが左端 0 から始まるので、同じ x に揃える
+        .padding(.trailing, DayGridView.trailingInset)
         .padding(.vertical, 6)
     }
 }

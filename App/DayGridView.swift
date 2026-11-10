@@ -11,7 +11,8 @@ struct DayGridView: View {
     /// 時刻ラベルの列幅。上に固定する「終日」行のラベルも同じ幅にして揃える。
     static let labelWidth: CGFloat = 48
     private var labelWidth: CGFloat { Self.labelWidth }
-    private let trailingInset: CGFloat = 12
+    static let trailingInset: CGFloat = 12
+    private var trailingInset: CGFloat { Self.trailingInset }
 
     @State private var now = Date.now
     private let clock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
