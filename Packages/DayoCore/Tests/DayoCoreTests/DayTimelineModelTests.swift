@@ -8,8 +8,10 @@ private final class FakeSource: CalendarSource {
     var accessResult: AccessStatus = .granted
     var snapshots: [Date: TimelineSnapshot] = [:]
     var setCompletedError: Error?
+    var updateError: Error?
     private(set) var requests: [(range: DateInterval, includingOverdue: Bool)] = []
     private(set) var completions: [(id: String, completed: Bool)] = []
+    private(set) var updates: [(item: TimelineItem, draft: ItemDraft, span: EditSpan)] = []
     var gate = false
     private var pending: [CheckedContinuation<Void, Never>] = []
     var pendingCount: Int { pending.count }
@@ -31,7 +33,10 @@ private final class FakeSource: CalendarSource {
 
     func create(_ draft: ItemDraft) async throws {}
 
-    func update(_ item: TimelineItem, with draft: ItemDraft, span: EditSpan) async throws {}
+    func update(_ item: TimelineItem, with draft: ItemDraft, span: EditSpan) async throws {
+        if let updateError { throw updateError }
+        updates.append((item, draft, span))
+    }
     func delete(_ item: TimelineItem, span: EditSpan) async throws {}
     func destinations() async throws -> [Destination] { [] }
 
@@ -201,5 +206,88 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
 
         #expect(model.day == d1)
         #expect(source.requests.map(\.range.start) == [d0, d1])
+    }
+
+    @Test func moveShowsNewPositionBeforeSaveFinishesAndSendsDraft() async {
+        let source = FakeSource()
+        let original = item("x", start: iso("2026-11-10T09:00:00Z"))
+        source.snapshots[d0] = TimelineSnapshot(items: [original], overdue: [])
+        let model = makeModel(source) { self.d0 }
+        await model.activate()
+        #expect(model.placements.first?.startMinute == 9 * 60)
+
+        // 保存後の読み直しを止めて、楽観更新の状態を見る
+        source.gate = true
+        let task = Task { await model.move(original, toStartMinute: 11 * 60, span: .futureOccurrences) }
+        await source.waitForPending(1)
+
+        #expect(model.placements.first?.startMinute == 11 * 60)
+        #expect(source.updates.count == 1)
+        #expect(source.updates[0].item == original)
+        #expect(source.updates[0].draft.start == iso("2026-11-10T11:00:00Z"))
+        #expect(source.updates[0].draft.end == nil)
+        #expect(source.updates[0].span == .futureOccurrences)
+
+        source.release(at: 0)
+        await task.value
+    }
+
+    @Test func moveShiftsByTheVisibleDeltaForEventsClippedAtMidnight() async {
+        let source = FakeSource()
+        // 前日 22:00〜当日 2:00 の予定。表示は 0:00〜2:00 に切られる
+        let start = iso("2026-11-09T22:00:00Z")
+        let event = TimelineItem(
+            id: "e", calendarItemIdentifier: "e", kind: .event, title: "夜勤", start: start,
+            end: iso("2026-11-10T02:00:00Z"), isAllDay: false, isCompleted: false,
+            sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false
+        )
+        source.snapshots[d0] = TimelineSnapshot(items: [event], overdue: [])
+        let model = makeModel(source) { self.d0 }
+        await model.activate()
+        #expect(model.placements.first?.startMinute == 0)
+
+        // 3 時間下へ → 開始も 3 時間だけ後ろへ（当日 3:00 に飛ばない）
+        await model.move(event, toStartMinute: 180, span: .thisOccurrence)
+
+        #expect(source.updates.first?.draft.start == iso("2026-11-10T01:00:00Z"))
+        #expect(source.updates.first?.draft.end == iso("2026-11-10T05:00:00Z"))
+    }
+
+    @Test func moveFailureShowsErrorAndRevertsOnReload() async {
+        let source = FakeSource()
+        source.updateError = TestError()
+        let original = item("x", start: iso("2026-11-10T09:00:00Z"))
+        source.snapshots[d0] = TimelineSnapshot(items: [original], overdue: [])
+        let model = makeModel(source) { self.d0 }
+        await model.activate()
+
+        await model.move(original, toStartMinute: 11 * 60, span: .thisOccurrence)
+
+        #expect(model.errorMessage != nil)
+        #expect(model.placements.first?.startMinute == 9 * 60)
+    }
+}
+
+@Suite struct MoveDraftTests {
+    @Test func keepsDurationAndAttributes() {
+        let start = iso("2026-11-10T09:00:00Z")
+        let event = TimelineItem(
+            id: "e", calendarItemIdentifier: "e", kind: .event, title: "面談", start: start,
+            end: start.addingTimeInterval(90 * 60), isAllDay: false, isCompleted: false,
+            sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1),
+            recurrence: RecurrenceSpec(frequency: .weekly, weekdays: [3]), isShared: false,
+            notes: "資料", calendarIdentifier: "cal"
+        )
+        let moved = ItemDraft(moving: event, to: iso("2026-11-10T11:00:00Z"))
+        #expect(moved.start == iso("2026-11-10T11:00:00Z"))
+        #expect(moved.end == iso("2026-11-10T12:30:00Z"))
+        #expect(moved.isAllDay == false)
+        #expect(moved.title == "面談")
+        #expect(moved.notes == "資料")
+        #expect(moved.recurrence == RecurrenceSpec(frequency: .weekly, weekdays: [3]))
+        #expect(moved.calendarID == nil)
+
+        let reminder = item("r", start: start)
+        #expect(ItemDraft(moving: reminder, to: start).end == nil)
     }
 }

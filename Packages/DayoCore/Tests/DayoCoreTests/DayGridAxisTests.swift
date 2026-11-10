@@ -88,6 +88,48 @@ private func placement(_ start: Int, _ end: Int) -> GridPlacement {
         #expect(DayGridAxis.collapsedRanges(placements: [], startHour: 7, endHour: 23, nowMinute: 12 * 60) == [0..<420, 1380..<1440])
     }
 
+    @Test func minuteForYInvertsY() {
+        let axis = DayGridAxis(hourHeight: hour, collapsedHeight: band, collapsed: [0..<420, 1380..<1440])
+        for minute in stride(from: 420, through: 1380, by: 37) {
+            #expect(axis.minute(forY: axis.y(forMinute: minute)) == minute)
+        }
+        // 帯の中は帯の開始、範囲外は端に寄せる
+        #expect(axis.minute(forY: 10) == 0)
+        #expect(axis.minute(forY: -5) == 0)
+        #expect(axis.minute(forY: axis.totalHeight + 100) == 1440)
+        let linear = DayGridAxis(hourHeight: hour, collapsedHeight: band, collapsed: [])
+        #expect(linear.minute(forY: 90) == 90)
+    }
+
+    @Test func clampedStartSnapsAndAvoidsBands() {
+        let axis = DayGridAxis(hourHeight: hour, collapsedHeight: band, collapsed: [0..<420, 1380..<1440])
+        #expect(axis.clampedStart(minute: 607, duration: 60) == 600)
+        #expect(axis.clampedStart(minute: 608, duration: 60) == 615)
+        // 早朝の帯に掛かれば帯の終わりへ、深夜の帯に掛かれば帯の手前へ
+        #expect(axis.clampedStart(minute: 400, duration: 60) == 420)
+        #expect(axis.clampedStart(minute: 1350, duration: 60) == 1320)
+        #expect(axis.clampedStart(minute: 1500, duration: 60) == 1320)
+        let linear = DayGridAxis(hourHeight: hour, collapsedHeight: band, collapsed: [])
+        #expect(linear.clampedStart(minute: 1430, duration: 60) == 1380)
+        #expect(linear.clampedStart(minute: -30, duration: 60) == 0)
+    }
+
+    @Test func moveTargetSnapsTheDeltaAndKeepsTheOriginalMinutes() {
+        let linear = DayGridAxis(hourHeight: hour, collapsedHeight: band, collapsed: [])
+        // 9:10 の予定: 少し動かして戻せば動かず、16 分相当なら 15 分だけ動く
+        #expect(linear.moveTarget(startMinute: 550, duration: 60, translation: 5) == 550)
+        #expect(linear.moveTarget(startMinute: 550, duration: 60, translation: 16) == 565)
+        #expect(linear.moveTarget(startMinute: 550, duration: 60, translation: -40) == 505)
+        // 長さ 0 のリマインダーは 23:45 にも置ける
+        #expect(linear.moveTarget(startMinute: 1400, duration: 1, translation: 30) == 1430)
+        // 日の終わりで止まる
+        #expect(linear.moveTarget(startMinute: 1380, duration: 60, translation: 500) == 1380)
+
+        let axis = DayGridAxis(hourHeight: hour, collapsedHeight: band, collapsed: [0..<420, 1380..<1440])
+        // 早朝の帯へ引き上げると帯の終わりで止まる
+        #expect(axis.moveTarget(startMinute: 480, duration: 60, translation: -200) == 420)
+    }
+
     @Test func respectsExpandedEdgesAndSettingsBounds() {
         #expect(DayGridAxis.collapsedRanges(placements: [], startHour: 7, endHour: 23, expanded: [.early]) == [1380..<1440])
         #expect(DayGridAxis.collapsedRanges(placements: [], startHour: 0, endHour: 24).isEmpty)

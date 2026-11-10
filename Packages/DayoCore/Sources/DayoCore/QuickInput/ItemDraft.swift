@@ -42,3 +42,21 @@ public struct ItemDraft: Equatable {
         self.priority = priority
     }
 }
+
+extension ItemDraft {
+    /// 項目を同じ長さのまま新しい開始へ動かす下書き。他の属性は元のまま。
+    /// 保存先は変えないので `calendarID` は nil。繰り返しは元の規則を渡し、Repository 側で「変更なし」と判定させる。
+    public init(moving item: TimelineItem, to start: Date) {
+        let duration = item.start.flatMap { oldStart in item.end.map { $0.timeIntervalSince(oldStart) } } ?? 0
+        self.init(
+            kind: item.kind,
+            title: item.title,
+            start: start,
+            end: item.kind == .event ? start.addingTimeInterval(max(0, duration)) : nil,
+            isAllDay: false,
+            recurrence: item.recurrence,
+            notes: item.notes,
+            priority: item.priority
+        )
+    }
+}

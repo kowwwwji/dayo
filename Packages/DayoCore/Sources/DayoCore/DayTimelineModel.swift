@@ -97,6 +97,38 @@ public final class DayTimelineModel {
         await load()
     }
 
+    /// ドラッグで同じ日の別の時刻へ動かした。
+    /// 表示は先に動かし（楽観更新。離した瞬間に元の位置へ戻ってちらつかないため）、保存後に読み直す。
+    /// 失敗したらメッセージを出し、読み直して元に戻す。
+    public func move(_ item: TimelineItem, toStartMinute minute: Int, span: EditSpan) async {
+        guard !item.isAllDay, let start = item.start,
+              let range = calendar.dateInterval(of: .day, for: day),
+              let placement = placements.first(where: { $0.id == item.id })
+        else { return }
+        // 表示上の移動量だけずらす。前日から続く予定は 0:00 で切って表示しているので、絶対位置にすると飛ぶ
+        let delta = TimeInterval((minute - placement.startMinute) * 60)
+        let draft = ItemDraft(moving: item, to: start.addingTimeInterval(delta))
+
+        let previous = (timeline, placements)
+        if let index = timeline.timed.firstIndex(where: { $0.id == item.id }) {
+            timeline.timed[index].start = draft.start
+            timeline.timed[index].end = draft.end
+            placements = DayGridLayout.place(timeline.timed, in: range)
+        }
+        // 進行中の読み込み（同期通知など）が古い内容で楽観更新を上書きしないようにする
+        loadGeneration += 1
+
+        do {
+            try await source.update(item, with: draft, span: span)
+            await load()
+        } catch {
+            // まず元に戻し、読み直しが失敗しても動いたままに見えないようにする。メッセージは load が消すので最後に
+            (timeline, placements) = previous
+            await load()
+            errorMessage = error.localizedDescription
+        }
+    }
+
     public func showPreviousDay() async {
         await show(day: calendar.date(byAdding: .day, value: -1, to: day))
     }
