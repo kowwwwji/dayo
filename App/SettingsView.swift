@@ -4,9 +4,13 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage(DayHours.startKey) private var startHour = DayHours.defaultStart
     @AppStorage(DayHours.endKey) private var endHour = DayHours.defaultEnd
+    @AppStorage(DayTitle.showsWeekNumberKey) private var showsWeekNumber = true
 
     var body: some View {
         Form {
+            Section("日付") {
+                Toggle("週番号を表示（例: 46w）", isOn: $showsWeekNumber)
+            }
             Section {
                 DayHoursPicker(startHour: $startHour, endHour: $endHour)
             } header: {
