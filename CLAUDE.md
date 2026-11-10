@@ -14,3 +14,8 @@
 - `xcodegen generate` で `Dayo.xcodeproj` を生成する（`project.yml` が正。`.xcodeproj` と `App/Info.plist` は生成物で git 管理外）
 - ドメイン層は `Packages/DayoCore`。テストは `cd Packages/DayoCore && swift test`（Swift Testing）
 - アプリは `xcodebuild -project Dayo.xcodeproj -scheme Dayo -destination 'platform=macOS' -derivedDataPath DerivedData build`。起動は `open DerivedData/Build/Products/Debug/Dayo.app`。Mac はアドホック署名、iOS は `DEVELOPMENT_TEAM` 未設定のためシミュレータのみ
+- iOS のビルド確認は `xcodebuild -project Dayo.xcodeproj -scheme Dayo -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData build`
+- 画面確認は `open -n -g DerivedData/Build/Products/Debug/Dayo.app --args -timelineMode week`（`-キー 値` はその起動だけ `@AppStorage` を上書きし、保存済みの設定は変えない）。撮るのは `screencapture -l <ウィンドウID>` で Dayo のウィンドウだけ。全画面は作業中の別アプリが写る
+- Swift Testing の `#expect` に `allSatisfy { ... }` など rethrows のクロージャを直接書くとコンパイルエラーになる。`map(\.x) == [...]` の形で比べる
+- SwiftUI の `.offset` で置いたビューは `ScrollViewReader.scrollTo` の行き先にならない（配置上の位置が変わらないため）。行き先には `alignmentGuide` で位置を持たせた目印を置く
+- `DateInterval.contains` は終端を含む。「翌日 0:00 は含めない」判定は `start <= x && x < end` で書く
