@@ -96,6 +96,22 @@ public final class EventKitRepository: CalendarSource {
         }
     }
 
+    public func destinations() async throws -> [Destination] {
+        func writable(_ entity: EKEntityType, as kind: ItemKind) -> [Destination] {
+            store.calendars(for: entity)
+                .filter(\.allowsContentModifications)
+                .map {
+                    Destination(
+                        id: $0.calendarIdentifier,
+                        name: $0.title,
+                        kind: kind,
+                        color: $0.cgColor ?? TimelineItem.fallbackColor
+                    )
+                }
+        }
+        return writable(.reminder, as: .reminder) + writable(.event, as: .event)
+    }
+
     /// 名前でカレンダー／リストを探す。名前が無ければ nil（呼び出し側で既定にする）。
     /// 名前があるのに見つからなければエラー。黙って既定に入れると、意図しない場所に登録されたことに気づけない。
     private func calendar(named name: String?, for entity: EKEntityType) throws -> EKCalendar? {

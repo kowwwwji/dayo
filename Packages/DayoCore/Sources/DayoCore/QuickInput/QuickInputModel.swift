@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// クイック入力欄の状態。入力文字列の解釈プレビューと登録を持つ。
+/// クイック入力欄の状態。入力文字列の解釈プレビュー、`#` `@` の保存先補完、登録を持つ。
 @MainActor
 @Observable
 public final class QuickInputModel {
@@ -10,6 +10,8 @@ public final class QuickInputModel {
     }
     public private(set) var isSubmitting = false
     public private(set) var errorMessage: String?
+    /// 補完候補の元になる保存先一覧。`loadDestinations()` で取り直す。
+    public private(set) var destinations: [Destination] = []
     /// 登録に成功したあとに呼ぶ。タイムライン側の即時再読み込みに使う。
     public var onCreated: (@MainActor () async -> Void)?
 
@@ -69,5 +71,51 @@ public final class QuickInputModel {
         text = ""
         errorMessage = nil
         await onCreated?()
+    }
+
+    // MARK: - 保存先の補完
+
+    /// 失敗しても候補が出ないだけなので、エラーは表示しない。
+    public func loadDestinations() async {
+        if let loaded = try? await source.destinations() {
+            destinations = loaded
+        }
+    }
+
+    /// 入力末尾が `#` か `@` で始まる語なら、その語に前方一致する保存先。完全に打ち終えた名前は出さない。
+    public var suggestions: [Destination] {
+        guard let token = Self.trailingMarkerToken(in: text) else { return [] }
+        let kind: ItemKind = token.marker == "#" ? .reminder : .event
+        return destinations
+            .filter { $0.kind == kind }
+            .filter { Self.matches($0.name, prefix: token.name) }
+            .filter { $0.name.compare(token.name, options: Self.compareOptions) != .orderedSame }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// 候補を選んだ。入力末尾の `#…` `@…` をその名前に置き換え、続けて打てるよう空白を足す。
+    public func apply(_ destination: Destination) {
+        guard let token = Self.trailingMarkerToken(in: text) else { return }
+        text = text[..<token.range.lowerBound] + token.marker + destination.name + " "
+    }
+
+    private struct MarkerToken {
+        let marker: String
+        let name: String
+        let range: Range<String.Index>
+    }
+
+    private static let compareOptions: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+
+    private static func matches(_ name: String, prefix: String) -> Bool {
+        prefix.isEmpty || name.range(of: prefix, options: compareOptions.union(.anchored)) != nil
+    }
+
+    private static func trailingMarkerToken(in text: String) -> MarkerToken? {
+        guard let last = text.last, !last.isWhitespace else { return nil }
+        let start = text.lastIndex(where: \.isWhitespace).map { text.index(after: $0) } ?? text.startIndex
+        let token = text[start...]
+        guard let marker = token.first.map(String.init), marker == "#" || marker == "@" else { return nil }
+        return MarkerToken(marker: marker, name: String(token.dropFirst()), range: start..<text.endIndex)
     }
 }

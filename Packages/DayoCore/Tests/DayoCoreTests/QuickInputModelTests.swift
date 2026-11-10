@@ -6,6 +6,7 @@ import Testing
 private final class RecordingSource: CalendarSource {
     private(set) var drafts: [ItemDraft] = []
     var createError: Error?
+    var destinationList: [Destination] = []
 
     func requestAccess() async throws -> AccessStatus { .granted }
     func snapshot(for range: DateInterval, includingOverdue: Bool) async throws -> TimelineSnapshot { .empty }
@@ -14,7 +15,12 @@ private final class RecordingSource: CalendarSource {
         if let createError { throw createError }
         drafts.append(draft)
     }
+    func destinations() async throws -> [Destination] { destinationList }
     var changes: AsyncStream<Void> { AsyncStream { _ in } }
+}
+
+private func destination(_ name: String, _ kind: ItemKind) -> Destination {
+    Destination(id: "\(kind)-\(name)", name: name, kind: kind, color: CGColor(gray: 0, alpha: 1))
 }
 
 private struct TestError: LocalizedError {
@@ -81,6 +87,50 @@ private let reference = tokyo.date(from: DateComponents(year: 2026, month: 11, d
 
         model.text = "牛乳買う 2本"
         #expect(model.errorMessage == nil)
+    }
+
+    @Test func suggestionsFollowTrailingMarkerToken() async {
+        let source = RecordingSource()
+        source.destinationList = [
+            destination("家族", .reminder), destination("買い物", .reminder), destination("仕事", .reminder),
+            destination("個人的", .event), destination("Work", .event),
+        ]
+        let model = makeModel(source)
+        await model.loadDestinations()
+
+        model.text = "歯医者"
+        #expect(model.suggestions.isEmpty)
+
+        model.text = "歯医者 #"
+        #expect(model.suggestions.map(\.name) == ["家族", "仕事", "買い物"])
+
+        model.text = "歯医者 #家"
+        #expect(model.suggestions.map(\.name) == ["家族"])
+
+        model.text = "面談 @"
+        #expect(model.suggestions.map(\.name) == ["Work", "個人的"])
+
+        model.text = "面談 @w"
+        #expect(model.suggestions.map(\.name) == ["Work"])
+
+        // 打ち終えた名前は候補に出さない。空白を打ったら候補は閉じる
+        model.text = "面談 @Work"
+        #expect(model.suggestions.isEmpty)
+        model.text = "面談 @Wo "
+        #expect(model.suggestions.isEmpty)
+    }
+
+    @Test func applyingSuggestionReplacesTokenAndAddsSpace() async {
+        let source = RecordingSource()
+        source.destinationList = [destination("家族", .reminder)]
+        let model = makeModel(source)
+        await model.loadDestinations()
+        model.text = "明日 歯医者 #家"
+
+        model.apply(model.suggestions[0])
+
+        #expect(model.text == "明日 歯医者 #家族 ")
+        #expect(model.suggestions.isEmpty)
     }
 
     @Test func submitWithoutTitleIsRejected() async {

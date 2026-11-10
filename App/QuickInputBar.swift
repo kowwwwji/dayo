@@ -20,7 +20,9 @@ struct QuickInputBar: View {
                     ProgressView().controlSize(.small)
                 }
             }
-            if let parsed = model.parsed {
+            if !model.suggestions.isEmpty {
+                suggestions
+            } else if let parsed = model.parsed {
                 chips(for: parsed)
             }
             if let message = model.errorMessage {
@@ -32,6 +34,32 @@ struct QuickInputBar: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.bar)
+        .task { await model.loadDestinations() }
+    }
+
+    /// `#` `@` の直後に出す保存先の候補。選ぶと名前が補完される。
+    private var suggestions: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(model.suggestions) { destination in
+                    Button {
+                        model.apply(destination)
+                    } label: {
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(Color(cgColor: destination.color))
+                                .frame(width: 8, height: 8)
+                            Text(destination.name)
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(.quaternary, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 
     private func chips(for parsed: ParsedInput) -> some View {

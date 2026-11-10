@@ -60,6 +60,21 @@ public struct TimelineSnapshot: Equatable {
     public static let empty = TimelineSnapshot(items: [], overdue: [])
 }
 
+/// 保存先の候補。リマインダーのリストか予定のカレンダー。
+public struct Destination: Equatable, Identifiable {
+    public var id: String
+    public var name: String
+    public var kind: ItemKind
+    public var color: CGColor
+
+    public init(id: String, name: String, kind: ItemKind, color: CGColor) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.color = color
+    }
+}
+
 /// 予定・リマインダーの取得元。画面はこの protocol と TimelineItem だけを扱う。
 public protocol CalendarSource {
     /// 予定とリマインダーの権限をまとめて要求し、結果の状態を返す。
@@ -71,6 +86,8 @@ public protocol CalendarSource {
     func setCompleted(_ completed: Bool, for item: TimelineItem) async throws
     /// 予定またはリマインダーを新規登録する。反映は `changes` 経由か呼び出し側の再取得で行う。
     func create(_ draft: ItemDraft) async throws
+    /// 書き込めるリストとカレンダーの一覧。クイック入力の `#` `@` 補完に使う。
+    func destinations() async throws -> [Destination]
     /// 取得元に変更があったときに値を流す。受け取ったら表示中の期間を再取得する。
     var changes: AsyncStream<Void> { get }
 }
