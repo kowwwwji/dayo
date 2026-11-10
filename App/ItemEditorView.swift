@@ -107,12 +107,12 @@ struct ItemEditorView: View {
                 }
                 if !model.item.isEditable {
                     Text("このカレンダーは読み取り専用です（誕生日・祝日・購読など）")
-                        .font(.caption)
+                        .font(.dayoSmall)
                         .foregroundStyle(.secondary)
                 }
                 if let message = model.errorMessage {
                     Text(message)
-                        .font(.caption)
+                        .font(.dayoSmall)
                         .foregroundStyle(.red)
                 }
             }

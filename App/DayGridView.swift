@@ -120,7 +120,7 @@ struct DayGridView: View {
         ForEach(axis.visibleHours, id: \.self) { hour in
             HStack(alignment: .center, spacing: 6) {
                 Text(DayHours.label(hour))
-                    .font(.caption2.monospacedDigit())
+                    .font(.dayoDetail.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .frame(width: labelWidth - 6, alignment: .trailing)
                 Rectangle()
@@ -139,12 +139,12 @@ struct DayGridView: View {
             let frame = axis.bandFrame(for: range)
             HStack(spacing: 6) {
                 Text("\(DayHours.label(range.lowerBound / 60)) 〜 \(DayHours.label(range.upperBound / 60))")
-                    .font(.caption2.monospacedDigit())
+                    .font(.dayoDetail.monospacedDigit())
                 Text("予定なし")
-                    .font(.caption2)
+                    .font(.dayoDetail)
                 Spacer()
                 Image(systemName: "chevron.down")
-                    .font(.caption2)
+                    .font(.dayoDetail)
             }
             .foregroundStyle(.secondary)
             .padding(.horizontal, 8)
@@ -244,7 +244,7 @@ private struct GridItemView: View {
             .overlay(alignment: .topLeading) {
                 if isDragging {
                     Text(Self.timeText(minute: dropMinute(translation)))
-                        .font(.caption2.monospacedDigit().weight(.semibold))
+                        .font(.dayoDetail.monospacedDigit().weight(.semibold))
                         .foregroundStyle(.tint)
                         .frame(width: labelColumnWidth, alignment: .trailing)
                         .padding(.vertical, 1)
@@ -266,11 +266,11 @@ private struct GridItemView: View {
                 Rectangle().fill(color).frame(width: 3)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.title)
-                        .font(.caption.weight(.semibold))
+                        .font(.dayoSmall.weight(.semibold))
                         .lineLimit(placement.durationMinutes >= 60 ? 2 : 1)
                     if placement.durationMinutes >= 45, let start = item.start, let end = item.end {
                         Text("\(start.formatted(date: .omitted, time: .shortened))–\(end.formatted(date: .omitted, time: .shortened))")
-                            .font(.caption2)
+                            .font(.dayoDetail)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -294,9 +294,9 @@ private struct GridItemView: View {
                 .accessibilityLabel(item.isCompleted ? "未完了に戻す" : "完了にする")
                 HStack(spacing: 4) {
                     PriorityMark(priority: item.priority)
-                        .font(.caption)
+                        .font(.dayoSmall)
                     Text(item.title)
-                        .font(.caption)
+                        .font(.dayoSmall)
                         .strikethrough(item.isCompleted)
                         .foregroundStyle(item.isCompleted ? .secondary : .primary)
                         .lineLimit(1)

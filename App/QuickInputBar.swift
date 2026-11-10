@@ -44,7 +44,7 @@ struct QuickInputBar: View {
             }
             if let message = model.errorMessage {
                 Text(message)
-                    .font(.caption)
+                    .font(.dayoSmall)
                     .foregroundStyle(.red)
             }
         }
@@ -73,7 +73,7 @@ struct QuickInputBar: View {
                                 .frame(width: 8, height: 8)
                             Text(destination.name)
                         }
-                        .font(.caption)
+                        .font(.dayoSmall)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(
@@ -127,7 +127,7 @@ private struct Chip: View {
 
     var body: some View {
         Label(text, systemImage: symbol)
-            .font(.caption)
+            .font(.dayoSmall)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(.quaternary, in: Capsule())

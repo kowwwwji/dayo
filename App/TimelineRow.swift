@@ -25,7 +25,7 @@ struct TimelineRow: View {
                     }
                     Text(item.sourceName).foregroundStyle(.tertiary)
                 }
-                .font(.caption)
+                .font(.dayoSmall)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())

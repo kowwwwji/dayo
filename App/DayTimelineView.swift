@@ -22,7 +22,7 @@ struct DayTimelineView: View {
             Divider()
             if let message = model.errorMessage {
                 Text(message)
-                    .font(.caption)
+                    .font(.dayoSmall)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
@@ -164,7 +164,7 @@ private struct PinnedSection<Content: View>: View {
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
             Text(title)
-                .font(.caption2)
+                .font(.dayoDetail)
                 .foregroundStyle(.secondary)
                 .frame(width: DayGridView.labelWidth - 6, alignment: .trailing)
                 .padding(.top, 4)
