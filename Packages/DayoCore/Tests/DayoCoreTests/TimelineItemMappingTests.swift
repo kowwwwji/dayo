@@ -237,3 +237,29 @@ private func iso(_ string: String) -> Date {
         #expect(AccessStatus(events: .notDetermined, reminders: .notDetermined) == .notDetermined)
     }
 }
+
+@Suite struct EventKitApplyTests {
+    private func tokyoDate(_ day: Int, _ hour: Int = 0, _ minute: Int = 0) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        return calendar.date(from: DateComponents(year: 2026, month: 11, day: day, hour: hour, minute: minute))!
+    }
+
+    @Test func givingAnAllDayEventATimeKeepsThatTime() throws {
+        let store = EKEventStore()
+        let repository = EventKitRepository(store: store, timeZone: TimeZone(identifier: "Asia/Tokyo")!)
+        let event = EKEvent(eventStore: store)
+        event.title = "出張"
+        event.isAllDay = true
+        event.startDate = tokyoDate(10)
+        event.endDate = tokyoDate(10)
+
+        // 終日のまま日時を入れると EventKit が日の端（0:00〜23:59）へ丸めてしまう
+        let draft = ItemDraft(kind: .event, title: "出張", start: tokyoDate(12, 10), end: tokyoDate(12, 11))
+        try repository.apply(draft, to: event, previous: nil, changesRecurrence: false)
+
+        #expect(event.isAllDay == false)
+        #expect(event.startDate == tokyoDate(12, 10))
+        #expect(event.endDate == tokyoDate(12, 11))
+    }
+}

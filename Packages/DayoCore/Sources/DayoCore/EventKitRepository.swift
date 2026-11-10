@@ -197,13 +197,15 @@ public final class EventKitRepository: CalendarSource {
         return previous.earlyReminderMinutes != draft.earlyReminderMinutes
     }
 
-    private func apply(_ draft: ItemDraft, to event: EKEvent, previous: TimelineItem?, changesRecurrence: Bool) throws {
+    func apply(_ draft: ItemDraft, to event: EKEvent, previous: TimelineItem?, changesRecurrence: Bool) throws {
         guard let start = draft.start else { throw CalendarSourceError.eventNeedsStart }
         event.title = draft.title
         event.notes = Self.normalizedNotes(draft.notes)
+        // 終日かどうかを先に決める。終日のまま日時を入れると EventKit が日の端（0:00〜23:59）へ丸めるので、
+        // 終日の予定に時刻を付けたとき、その時刻が消えてしまう
+        event.isAllDay = draft.isAllDay
         event.startDate = start
         event.endDate = draft.end ?? start
-        event.isAllDay = draft.isAllDay
         if changesRecurrence, !(previous?.hasCustomRecurrence ?? false) {
             replaceRecurrence(of: event, with: draft.recurrence)
         }
