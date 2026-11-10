@@ -41,7 +41,6 @@ extension TimelineItem {
             // 時刻のない期日は終日扱い
             isAllDay: due != nil && due?.hour == nil,
             isCompleted: reminder.isCompleted,
-            completionDate: reminder.completionDate,
             sourceName: reminder.calendar?.title ?? "",
             accountName: reminder.calendar?.source?.title ?? "",
             color: reminder.calendar?.cgColor ?? Self.fallbackColor,

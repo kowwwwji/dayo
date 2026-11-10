@@ -8,21 +8,18 @@ public struct DayTimeline: Equatable {
     public var overdue: [TimelineItem]
     /// 時刻付き。時刻順、同時刻は予定 → リマインダー → id。
     public var timed: [TimelineItem]
-    /// 期日なし Todo。タイトル順。
-    public var undated: [TimelineItem]
 
+    /// 期日なし（`start == nil`）は時間軸に載せないため捨てる。
     public init(items: [TimelineItem], overdue: [TimelineItem]) {
         allDay = items.filter { $0.start != nil && $0.isAllDay }
             .sorted(by: Self.kindThenTitle)
         self.overdue = overdue.sorted(by: Self.startThenTieBreak)
         timed = items.filter { $0.start != nil && !$0.isAllDay }
             .sorted(by: Self.startThenTieBreak)
-        undated = items.filter { $0.start == nil }
-            .sorted(by: Self.titleThenID)
     }
 
     public var isEmpty: Bool {
-        allDay.isEmpty && overdue.isEmpty && timed.isEmpty && undated.isEmpty
+        allDay.isEmpty && overdue.isEmpty && timed.isEmpty
     }
 
     private static func startThenTieBreak(_ a: TimelineItem, _ b: TimelineItem) -> Bool {

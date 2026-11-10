@@ -68,7 +68,6 @@ struct TimelineItem: Identifiable {
     var end: Date?              // eventのみ
     var isAllDay: Bool
     var isCompleted: Bool       // reminderのみ
-    var completionDate: Date?   // reminderのみ。期日なしの完了済みは完了日の日に表示
     var sourceName: String      // リスト名 or カレンダー名
     var accountName: String     // iCloud / Google などアカウント名（同名カレンダーの区別）
     var color: CGColor
@@ -81,8 +80,8 @@ struct TimelineItem: Identifiable {
 | --- | --- | --- |
 | start | startDate | dueDateComponents → Date |
 | end | endDate | なし |
-| 完了 | なし | isCompleted / completionDate |
-| 日付なし | なし | あり（「期日なし」セクションに表示） |
+| 完了 | なし | isCompleted |
+| 日付なし | なし | あり（タイムラインには表示しない。純正リマインダーで管理する） |
 | 繰り返し | recurrenceRules | recurrenceRules |
 
 注意点：繰り返し予定は期間指定で展開された各回が返り、全回が同じ `calendarItemIdentifier` を持つため `id` は開始時刻を付けて区別する。一方、繰り返しリマインダーは「次の1回」だけが存在する。週表示で将来分も見せるなら、RRULEから仮想的に展開した表示用アイテム（編集不可、薄色）を生成する。
@@ -93,7 +92,7 @@ struct TimelineItem: Identifiable {
 
 | 画面 | 内容 | Mac | iPhone |
 | --- | --- | --- | --- |
-| 今日タイムライン | 中央は設定で切替: 既定は Apple カレンダーの日表示のような時間軸グリッド（時刻の目盛り上に予定をブロック、リマインダーを時刻位置のチェック付き行として配置、重なりは横に並べる）、もう1つは時刻順リスト。上部に終日予定と期限切れ、下部に期日なしTodo。リマインダーはその場で完了チェック | メインウィンドウ左ペイン | ホームタブ |
+| 今日タイムライン | 中央は設定で切替: 既定は Apple カレンダーの日表示のような時間軸グリッド（時刻の目盛り上に予定をブロック、リマインダーを時刻位置のチェック付き行として配置、重なりは横に並べる）、もう1つは時刻順リスト。上部に終日予定と期限切れ。期日なしのリマインダーは表示しない。リマインダーはその場で完了チェック | メインウィンドウ左ペイン | ホームタブ |
 | 週表示 | 7日分の列。予定はブロック、リマインダーはチェック付きの行。繰り返しの将来分は薄色 | メインウィンドウ右ペイン | 横スクロール |
 | リスト | リマインダーリストごとの一覧。共有リストにはアイコン | サイドバー | タブ |
 | クイック入力 | 1行入力。入力中に解釈結果（日時・繰り返し・リスト）をチップでプレビュー、Enterで登録 | メインウィンドウ上部の常設バー | 画面下部の常設バー |

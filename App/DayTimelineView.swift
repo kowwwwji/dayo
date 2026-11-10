@@ -2,7 +2,7 @@ import DayoCore
 import SwiftUI
 
 /// 1 日分の予定と Todo を 1 本の時間軸で見せる。
-/// 上部に終日・期限切れ、中央に時刻付き（グリッドかリスト）、下部に期日なし。
+/// 上部に終日・期限切れ、中央に時刻付き（グリッドかリスト）。期日なしのリマインダーは扱わない。
 struct DayTimelineView: View {
     let model: DayTimelineModel
     @AppStorage(TimelineStyle.storageKey) private var style: TimelineStyle = .grid
@@ -85,12 +85,6 @@ struct DayTimelineView: View {
                 Divider()
             }
             timed
-            if !model.timeline.undated.isEmpty {
-                Divider()
-                PinnedSection(title: "期日なし") {
-                    ForEach(model.timeline.undated) { row($0) }
-                }
-            }
         }
         .overlay {
             if model.hasLoaded, model.timeline.isEmpty {
@@ -119,7 +113,7 @@ struct DayTimelineView: View {
     }
 }
 
-/// グリッドの上下に固定する小さなセクション。行数が多いときだけ内部でスクロールする。
+/// グリッドの上に固定する小さなセクション。行数が多いときだけ内部でスクロールする。
 private struct PinnedSection<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content

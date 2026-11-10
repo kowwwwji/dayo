@@ -22,8 +22,6 @@ public struct TimelineItem: Identifiable, Equatable {
     public var isAllDay: Bool
     /// reminder のみ。event は常に false。
     public var isCompleted: Bool
-    /// reminder のみ。完了していれば完了日時。
-    public var completionDate: Date?
     /// リスト名 or カレンダー名。
     public var sourceName: String
     /// アカウント名（iCloud / Google など）。同名カレンダーの区別と接続確認に使う。
@@ -42,7 +40,6 @@ public struct TimelineItem: Identifiable, Equatable {
         end: Date?,
         isAllDay: Bool,
         isCompleted: Bool,
-        completionDate: Date? = nil,
         sourceName: String,
         accountName: String,
         color: CGColor,
@@ -57,7 +54,6 @@ public struct TimelineItem: Identifiable, Equatable {
         self.end = end
         self.isAllDay = isAllDay
         self.isCompleted = isCompleted
-        self.completionDate = completionDate
         self.sourceName = sourceName
         self.accountName = accountName
         self.color = color
@@ -65,16 +61,10 @@ public struct TimelineItem: Identifiable, Equatable {
         self.isShared = isShared
     }
 
-    /// 期間の日に表示すべきか。
-    /// 期日付きは期日で、期日なしの完了済みは完了日で判定し、期日なしの未完了は常に含める。
+    /// 期間の日に表示すべきか。期日で判定し、期日なしのリマインダーは時間軸に載せない。
     /// `range.end`（翌日 0:00）は含めない。
     public func falls(in range: DateInterval) -> Bool {
-        if let start {
-            return start >= range.start && start < range.end
-        }
-        if let completionDate {
-            return completionDate >= range.start && completionDate < range.end
-        }
-        return !isCompleted
+        guard let start else { return false }
+        return start >= range.start && start < range.end
     }
 }

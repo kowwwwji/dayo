@@ -145,9 +145,9 @@ private func iso(_ string: String) -> Date {
         #expect(item(start: today.end).falls(in: today) == false)
     }
 
-    @Test func excludesOverdueAndIncludesUndated() {
+    @Test func excludesOverdueAndUndated() {
         #expect(item(start: iso("2026-11-09T12:00:00Z")).falls(in: today) == false)
-        #expect(item(start: nil).falls(in: today) == true)
+        #expect(item(start: nil).falls(in: today) == false)
     }
 }
 

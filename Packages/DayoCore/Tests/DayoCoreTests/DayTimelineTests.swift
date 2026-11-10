@@ -38,7 +38,12 @@ private func make(
         #expect(timeline.allDay == [allDay])
         #expect(timeline.overdue == [overdue])
         #expect(timeline.timed == [dated])
-        #expect(timeline.undated == [undated])
+        #expect(timeline.isEmpty == false)
+    }
+
+    @Test func dropsUndatedReminders() {
+        let timeline = DayTimeline(items: [make("undated")], overdue: [])
+        #expect(timeline.isEmpty)
     }
 
     @Test func timedSortedByStartThenEventBeforeReminderThenID() {
@@ -71,14 +76,15 @@ private func make(
         #expect(timeline.overdue.map(\.id) == ["w", "y"])
     }
 
-    @Test func undatedSortedByTitleThenID() {
-        let b = make("1", title: "b")
-        let a2 = make("3", title: "a")
-        let a1 = make("2", title: "a")
+    @Test func allDaySameKindSortedByTitleThenID() {
+        let day = iso("2026-11-10T00:00:00Z")
+        let b = make("1", start: day, isAllDay: true, title: "b")
+        let a2 = make("3", start: day, isAllDay: true, title: "a")
+        let a1 = make("2", start: day, isAllDay: true, title: "a")
 
         let timeline = DayTimeline(items: [b, a2, a1], overdue: [])
 
-        #expect(timeline.undated.map(\.id) == ["2", "3", "1"])
+        #expect(timeline.allDay.map(\.id) == ["2", "3", "1"])
     }
 
     @Test func emptyInputGivesEmptySections() {
