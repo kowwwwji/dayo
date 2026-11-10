@@ -4,7 +4,7 @@ import SwiftUI
 /// プラットフォームごとの外枠。Mac はサイドバー付きウィンドウ、iPhone はタブ。
 /// クイック入力は Mac では上部、iPhone では下部に常設する。
 struct RootView: View {
-    let model: DayTimelineModel
+    let model: TimelineModel
     let quickInput: QuickInputModel
     let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
     @AppStorage(DayTitle.showsWeekNumberKey) private var showsWeekNumber = true

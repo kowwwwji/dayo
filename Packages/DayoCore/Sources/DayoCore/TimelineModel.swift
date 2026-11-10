@@ -4,7 +4,7 @@ import Observation
 /// 1 日分のタイムライン画面の状態。権限・表示日・読み込み・完了操作・変更監視を持つ。
 @MainActor
 @Observable
-public final class DayTimelineModel {
+public final class TimelineModel {
     public private(set) var access: AccessStatus = .notDetermined
     /// 表示中の日（その日の 0:00）。
     public private(set) var day: Date

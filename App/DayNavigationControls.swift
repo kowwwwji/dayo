@@ -4,7 +4,7 @@ import SwiftUI
 /// 前日・翌日・今日へ移るボタン。指でもマウスでも押しやすいよう枠付きで大きめにする。
 /// 「今日」は今日以外を見ているときだけ ‹ › の左に現れる。‹ › は右端に固定して位置が変わらないようにする。
 struct DayNavigationControls: View {
-    let model: DayTimelineModel
+    let model: TimelineModel
 
     var body: some View {
         HStack(spacing: 6) {

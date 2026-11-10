@@ -4,7 +4,7 @@ import SwiftUI
 /// 1 日分の予定と Todo を 1 本の時間軸で見せる。
 /// 上部に終日・期限切れ、中央に時刻付きのグリッド。期日なしのリマインダーは扱わない。
 struct DayTimelineView: View {
-    let model: DayTimelineModel
+    let model: TimelineModel
     /// 項目から詳細編集のモデルを作る。保存先（CalendarSource）は App が握る
     let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
     @Environment(\.scenePhase) private var scenePhase

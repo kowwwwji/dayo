@@ -72,13 +72,13 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
 }
 
 @MainActor
-@Suite struct DayTimelineModelTests {
+@Suite struct TimelineModelTests {
     let d0 = iso("2026-11-10T00:00:00Z")
     let d1 = iso("2026-11-11T00:00:00Z")
     let d2 = iso("2026-11-12T00:00:00Z")
 
-    private func makeModel(_ source: FakeSource, now: @escaping () -> Date) -> DayTimelineModel {
-        DayTimelineModel(source: source, calendar: utc, now: now)
+    private func makeModel(_ source: FakeSource, now: @escaping () -> Date) -> TimelineModel {
+        TimelineModel(source: source, calendar: utc, now: now)
     }
 
     @Test func activateLoadsTodayWithOverdue() async {

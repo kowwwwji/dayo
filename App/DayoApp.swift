@@ -3,12 +3,12 @@ import SwiftUI
 
 @main
 struct DayoApp: App {
-    @State private var model: DayTimelineModel
+    @State private var model: TimelineModel
     @State private var quickInput: QuickInputModel
     private let source = EventKitRepository()
 
     init() {
-        let timeline = DayTimelineModel(source: source)
+        let timeline = TimelineModel(source: source)
         let quickInput = QuickInputModel(source: source)
         // 変更通知でも反映されるが、自分の登録は待たずに読み直す
         quickInput.onCreated = { await timeline.load() }
