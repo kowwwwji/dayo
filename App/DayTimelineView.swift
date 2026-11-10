@@ -76,10 +76,20 @@ struct DayTimelineView: View {
 
     private var sections: some View {
         VStack(spacing: 0) {
-            let pinned = model.timeline.allDay + model.timeline.overdue
-            if !pinned.isEmpty {
-                PinnedSection(title: "終日・期限切れ") {
-                    ForEach(model.timeline.allDay) { row($0) }
+            if !model.timeline.allDay.isEmpty {
+                PinnedSection(title: "終日") {
+                    FlowLayout(spacing: 6) {
+                        ForEach(model.timeline.allDay) { item in
+                            AllDayChip(item: item) {
+                                Task { await model.toggleCompleted(item) }
+                            }
+                        }
+                    }
+                }
+                Divider()
+            }
+            if !model.timeline.overdue.isEmpty {
+                PinnedSection(title: "期限切れ") {
                     ForEach(model.timeline.overdue) { row($0, isOverdue: true) }
                 }
                 Divider()
@@ -127,6 +137,8 @@ private struct PinnedSection<Content: View>: View {
                 VStack(alignment: .leading, spacing: 6) {
                     content
                 }
+                // ScrollView は中身が狭いと中央に寄せるので、左端に固定する
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxHeight: 140)
