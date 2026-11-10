@@ -1,14 +1,12 @@
 import SwiftUI
 
+/// 表示の切替（時間軸／リスト）はヘッダーにあるので、ここには置かない。
 struct SettingsView: View {
-    @AppStorage(TimelineStyle.storageKey) private var style: TimelineStyle = .grid
     @AppStorage(DayHours.startKey) private var startHour = DayHours.defaultStart
     @AppStorage(DayHours.endKey) private var endHour = DayHours.defaultEnd
 
     var body: some View {
         Form {
-            TimelineStylePicker(style: $style)
-                .pickerStyle(.inline)
             Section {
                 DayHoursPicker(startHour: $startHour, endHour: $endHour)
             } header: {

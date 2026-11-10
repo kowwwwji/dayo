@@ -25,7 +25,7 @@ struct DayHoursPicker: View {
         }
         Picker("一日の終わり", selection: $endHour) {
             ForEach(18...24, id: \.self) { hour in
-                Text(hour == 24 ? "畳まない" : DayHours.label(hour)).tag(hour)
+                Text(hour == 24 ? "なし" : DayHours.label(hour)).tag(hour)
             }
         }
     }
