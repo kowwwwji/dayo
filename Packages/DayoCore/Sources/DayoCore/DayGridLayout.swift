@@ -30,6 +30,8 @@ public enum DayGridLayout {
             let end = item.end ?? start
             let startMinute = Int((start.timeIntervalSince(range.start) / 60).rounded(.down))
             let endMinute = Int((end.timeIntervalSince(range.start) / 60).rounded(.up))
+            // 表示日より前に終わった項目は載せない（0:00 に寄せると最小の高さで出てしまう）
+            guard startMinute >= 0 || endMinute > 0 else { return nil }
             let clampedStart = max(0, min(dayMinutes, startMinute))
             let clampedEnd = max(clampedStart + minimumMinutes, min(dayMinutes, endMinute))
             guard clampedStart < dayMinutes else { return nil }

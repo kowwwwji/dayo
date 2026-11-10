@@ -83,3 +83,19 @@ private func item(_ id: String, kind: ItemKind = .event, _ start: String, _ end:
         #expect(placements.isEmpty)
     }
 }
+
+extension DayGridLayoutTests {
+    @Test func dropsItemsThatEndedBeforeTheDay() {
+        let placements = DayGridLayout.place([
+            item("yesterday", "2026-11-09T10:00:00Z", "2026-11-09T11:00:00Z"),
+            item("untilMidnight", "2026-11-09T22:00:00Z", "2026-11-10T00:00:00Z"),
+            item("oldReminder", kind: .reminder, "2026-11-09T09:00:00Z"),
+        ], in: day)
+        #expect(placements.isEmpty)
+    }
+
+    @Test func keepsAReminderDueAtMidnight() {
+        let placements = DayGridLayout.place([item("r", kind: .reminder, "2026-11-10T00:00:00Z")], in: day)
+        #expect(placements.map(\.startMinute) == [0])
+    }
+}
