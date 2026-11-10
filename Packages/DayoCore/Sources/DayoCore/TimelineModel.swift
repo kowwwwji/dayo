@@ -116,9 +116,7 @@ public final class TimelineModel {
                     item.kind == .reminder && !item.isCompleted && item.start.map { $0 < today } == true
                 }
                 : []
-            let virtual = futureRange(in: range).map {
-                VirtualOccurrences.expand(snapshot.recurring, in: $0, calendar: calendar)
-            } ?? []
+            let virtual = futureOccurrences(of: snapshot.recurring, in: range)
             timeline = DayTimeline(items: snapshot.items + virtual, overdue: snapshot.overdue + overdueInRange)
             layOut()
             hasLoaded = true
@@ -250,10 +248,14 @@ public final class TimelineModel {
         return result
     }
 
-    /// 将来回を展開する範囲。過ぎた時刻の回は「これから来る回」ではないので、いまより前は切る。
-    private func futureRange(in range: DateInterval) -> DateInterval? {
-        let start = max(range.start, now())
-        return start < range.end ? DateInterval(start: start, end: range.end) : nil
+    /// 表示範囲に入る将来回。「これから来る回」だけを出すので、過ぎた日の回と、今日の過ぎた時刻の回は除く。
+    /// 終日の回には時刻が無いので、今日の分は残す。
+    private func futureOccurrences(of recurring: [TimelineItem], in range: DateInterval) -> [TimelineItem] {
+        let now = now()
+        let start = max(range.start, calendar.startOfDay(for: now))
+        guard start < range.end else { return [] }
+        return VirtualOccurrences.expand(recurring, in: DateInterval(start: start, end: range.end), calendar: calendar)
+            .filter { item in item.isAllDay || item.start.map { $0 > now } == true }
     }
 
     private func layOut() {

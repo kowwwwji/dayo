@@ -3,7 +3,7 @@ import DayoCore
 import SwiftUI
 
 /// 週表示でグリッドの上に固定する見出し。曜日と日付の行、その下に終日の帯。
-/// 列幅はグリッドと同じ式（`DayGridView.dayWidth`）で決め、縦の位置を揃える。
+/// 左右の余白をグリッドと同じにして、列の位置を揃える。
 struct WeekHeaderView: View {
     let days: [Date]
     let spans: [AllDaySpan]
@@ -55,27 +55,27 @@ struct WeekHeaderView: View {
     }
 
     private var allDayRow: some View {
-        HStack(alignment: .top, spacing: 0) {
+        ScrollView {
+            GeometryReader { geometry in
+                // 余白を曜日の行・グリッドと同じにしてあるので、残りの幅を日数で割れば列幅が揃う
+                let dayWidth = geometry.size.width / CGFloat(max(1, days.count))
+                ForEach(spans) { span in
+                    AllDayChip(item: span.item, editing: editing, fillsWidth: true) { onToggle(span.item) }
+                        .frame(width: max(0, dayWidth * CGFloat(span.columnSpan) - 3), alignment: .leading)
+                        .offset(x: dayWidth * CGFloat(span.firstColumn), y: CGFloat(span.lane) * laneHeight)
+                }
+            }
+            .frame(height: CGFloat(laneCount) * laneHeight)
+        }
+        .frame(height: CGFloat(min(laneCount, visibleLanes)) * laneHeight)
+        .padding(.leading, DayGridView.labelWidth)
+        .padding(.trailing, DayGridView.trailingInset)
+        .overlay(alignment: .topLeading) {
             Text("終日")
                 .font(.dayoDetail)
                 .foregroundStyle(.secondary)
                 .frame(width: DayGridView.labelWidth - 6, alignment: .trailing)
                 .padding(.top, 5)
-            ScrollView {
-                GeometryReader { geometry in
-                    // このビューの幅は目盛りの列を除いた分なので、足して同じ式に通す
-                    let dayWidth = DayGridView.dayWidth(
-                        totalWidth: geometry.size.width + DayGridView.labelWidth, dayCount: days.count
-                    )
-                    ForEach(spans) { span in
-                        AllDayChip(item: span.item, editing: editing, fillsWidth: true) { onToggle(span.item) }
-                            .frame(width: max(0, dayWidth * CGFloat(span.columnSpan) - 3), alignment: .leading)
-                            .offset(x: 6 + dayWidth * CGFloat(span.firstColumn), y: CGFloat(span.lane) * laneHeight)
-                    }
-                }
-                .frame(height: CGFloat(laneCount) * laneHeight)
-            }
-            .frame(height: CGFloat(min(laneCount, visibleLanes)) * laneHeight)
         }
     }
 }

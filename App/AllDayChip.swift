@@ -9,6 +9,9 @@ struct AllDayChip: View {
     var fillsWidth = false
     let onToggle: () -> Void
 
+    /// エディタを開く場所のキー。同じリマインダーが期限切れ欄にも出ることがあるので、そちらと区別する。
+    private static let anchor = "allDay"
+
     private var color: Color { Color(cgColor: item.color) }
 
     var body: some View {
@@ -41,8 +44,8 @@ struct AllDayChip: View {
         .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
         // チップ全体をタップで編集（チェックのボタンはボタンが先に取る）
         .contentShape(Rectangle())
-        .onTapGesture { editing.open(item) }
-        .itemEditor(for: item, editing)
+        .onTapGesture { editing.open(item, at: Self.anchor) }
+        .itemEditor(for: item, editing, at: Self.anchor)
         .opacity(item.isVirtual ? 0.45 : 1)
         .allowsHitTesting(!item.isVirtual)
     }

@@ -139,7 +139,7 @@ DayGridView(
     }
 
     private func row(_ item: TimelineItem, isOverdue: Bool = false) -> some View {
-        TimelineRow(item: item, isOverdue: isOverdue, editing: editing) {
+        TimelineRow(item: item, isOverdue: isOverdue, editing: editing, anchor: isOverdue ? "overdue" : nil) {
             Task { await model.toggleCompleted(item) }
         }
     }

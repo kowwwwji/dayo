@@ -6,6 +6,8 @@ struct TimelineRow: View {
     let item: TimelineItem
     var isOverdue = false
     let editing: ItemEditing
+    /// エディタを開く場所のキー。同じ項目をほかの場所（グリッドや終日欄）にも出す画面で、そちらと区別する。
+    var anchor: String?
     let onToggle: () -> Void
 
     var body: some View {
@@ -30,8 +32,8 @@ struct TimelineRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .onTapGesture { editing.open(item) }
-            .itemEditor(for: item, editing)
+            .onTapGesture { editing.open(item, at: anchor) }
+            .itemEditor(for: item, editing, at: anchor)
         }
         .padding(.vertical, 2)
     }

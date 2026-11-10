@@ -11,6 +11,14 @@ public struct GridPlacement: Equatable, Identifiable {
     public let columnCount: Int
 
     public var durationMinutes: Int { endMinute - startMinute }
+
+    /// ドラッグで日の中に収めるときに使う長さ。実際の長さと、この日に見えている長さの短いほう。
+    /// 実際の長さだけで収めると、日をまたぐ予定は掴んだだけで手前へ寄ってしまう。
+    /// リマインダーは長さ 0 なので 1 分として扱い、23:45 にも置けるようにする。
+    public var movableMinutes: Int {
+        let real = item.start.flatMap { start in item.end.map { Int($0.timeIntervalSince(start) / 60) } } ?? 0
+        return max(1, min(real, durationMinutes))
+    }
 }
 
 /// 時刻付きの項目を 1 日の時間軸に配置する。重なる項目は横に並べる。

@@ -73,6 +73,19 @@ private func mdhm(_ dates: [Date]) -> [[Int]] {
         #expect(days(spec, from: date(2026, 11, 8), to: date(2026, 11, 29)) == [[11, 12], [11, 24], [11, 26]])
     }
 
+    @Test func biweeklyCountsWeeksFromMondayWhateverTheCalendarsFirstWeekday() {
+        // 隔週の日・月。起点は 11/8（日）。週の境目を OS の設定で変えると 11/9（月）が出たり出なかったりするので、
+        // iCalendar の既定どおり月曜始まりで数える（11/8 は 11/2 の週、次は 11/16 の週）
+        let spec = RecurrenceSpec(frequency: .weekly, interval: 2, weekdays: [1, 2])
+        let sunday = date(2026, 11, 8, 9)
+        for firstWeekday in [1, 2] {
+            var calendar = tokyo
+            calendar.firstWeekday = firstWeekday
+            let dates = spec.occurrences(after: sunday, in: range(date(2026, 11, 8), date(2026, 11, 29)), calendar: calendar)
+            #expect(mdhm(dates).map { [$0[0], $0[1]] } == [[11, 16], [11, 22]])
+        }
+    }
+
     @Test func monthlyWithoutDaysUsesTheAnchorDay() {
         let spec = RecurrenceSpec(frequency: .monthly)
         #expect(days(spec, from: date(2026, 11, 1), to: date(2027, 2, 1)) == [[12, 10], [1, 10]])

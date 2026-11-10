@@ -113,8 +113,12 @@ public struct RecurrenceSpec: Equatable, Sendable {
         case .daily:
             elapsed = calendar.dateComponents([.day], from: anchorDay, to: day).day
         case .weekly:
-            guard let anchorWeek = calendar.dateInterval(of: .weekOfYear, for: anchorDay)?.start,
-                  let week = calendar.dateInterval(of: .weekOfYear, for: day)?.start
+            // 週の境目は表示用の暦（OS の週の始まり）ではなく、iCalendar の既定の月曜始まりで数える。
+            // 設定によって同じ規則の回が変わらないようにするため
+            var weeks = calendar
+            weeks.firstWeekday = 2
+            guard let anchorWeek = weeks.dateInterval(of: .weekOfYear, for: anchorDay)?.start,
+                  let week = weeks.dateInterval(of: .weekOfYear, for: day)?.start
             else { return false }
             elapsed = calendar.dateComponents([.weekOfYear], from: anchorWeek, to: week).weekOfYear
         case .monthly:

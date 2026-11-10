@@ -99,3 +99,24 @@ extension DayGridLayoutTests {
         #expect(placements.map(\.startMinute) == [0])
     }
 }
+
+extension DayGridLayoutTests {
+    @Test func movableMinutesIsTheVisibleSliceForItemsCrossingMidnight() {
+        // 22:00〜翌 2:00。この日に見えているのは 22:00〜24:00 の 2 時間だけ
+        let placements = DayGridLayout.place([item("late", "2026-11-10T22:00:00Z", "2026-11-11T02:00:00Z")], in: day)
+        #expect(placements.map(\.movableMinutes) == [120])
+        // 実際の長さで日の中に収めると、動かしていないのに 20:00 へ寄ってしまう
+        let axis = DayGridAxis(hourHeight: 60, collapsedHeight: 20, collapsed: [])
+        let target = axis.moveTarget(startMinute: 1320, duration: placements[0].movableMinutes, translation: 0)
+        #expect(target == 1320)
+    }
+
+    @Test func movableMinutesIsTheRealLengthForShortItemsAndOneForReminders() {
+        let placements = DayGridLayout.place([
+            item("short", "2026-11-10T10:00:00Z", "2026-11-10T10:10:00Z"),
+            item("r", kind: .reminder, "2026-11-10T23:45:00Z"),
+        ], in: day)
+        #expect(placement("short", in: placements).movableMinutes == 10)
+        #expect(placement("r", in: placements).movableMinutes == 1)
+    }
+}

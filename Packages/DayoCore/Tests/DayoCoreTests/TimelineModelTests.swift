@@ -516,6 +516,19 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.columns.map(\.placements.count) == [0, 1, 0, 1, 1, 1, 1])
     }
 
+    @Test func allDayOccurrenceForTodayIsShownEvenAfterMidnight() async {
+        let source = FakeSource()
+        // 月曜の回が未完了のまま火曜 10:00。終日の回には時刻が無いので、今日の分は「これから」に数える
+        let trash = recurring("ゴミ", start: day(9), allDay: true)
+        source.snapshots[weekStart] = TimelineSnapshot(items: [trash], overdue: [], recurring: [trash])
+        let model = makeModel(source) { iso("2026-11-10T10:00:00Z") }
+
+        await model.activate()
+
+        #expect(model.allDaySpans.map(\.firstColumn) == [1, 2, 3, 4, 5, 6])
+        #expect(model.allDaySpans.map(\.item.isVirtual) == [false, true, true, true, true, true])
+    }
+
     @Test func virtualItemsCannotBeCompletedOrMoved() async {
         let source = FakeSource()
         let pill = recurring("薬", start: iso("2026-11-10T21:00:00Z"))

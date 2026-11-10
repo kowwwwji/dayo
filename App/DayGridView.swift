@@ -111,16 +111,13 @@ struct DayGridView: View {
         }
     }
 
-    /// 落とし先。縦は移動量を 15 分刻みに丸め、実際の長さで日の中・帯の外に収める
-    /// （表示上の最小の高さではなく実際の長さを使う。リマインダーは長さ 0 なので 23:45 にも置ける）。
+    /// 落とし先。縦は移動量を 15 分刻みに丸め、日の中・帯の外に収める（収める長さは `movableMinutes`）。
     /// 横は列単位で、表示中の日の外へは出さない。
     private func dropTarget(
         for placement: GridPlacement, dayIndex: Int, translation: CGSize, axis: DayGridAxis, dayWidth: CGFloat
     ) -> GridDropTarget {
-        let item = placement.item
-        let realDuration = item.start.flatMap { start in item.end.map { Int($0.timeIntervalSince(start) / 60) } } ?? 0
         let minute = axis.moveTarget(
-            startMinute: placement.startMinute, duration: max(1, realDuration), translation: translation.height
+            startMinute: placement.startMinute, duration: placement.movableMinutes, translation: translation.height
         )
         let shift = dayWidth > 0 ? Int((translation.width / dayWidth).rounded()) : 0
         let targetIndex = max(0, min(columns.count - 1, dayIndex + shift))
