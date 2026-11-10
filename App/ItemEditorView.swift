@@ -74,6 +74,8 @@ struct ItemEditorView: View {
                             DatePicker("終了", selection: $model.end, displayedComponents: dateComponents)
                         }
                     }
+                    // 上下ボタン付きの入力欄ではなく、クリックでカレンダーが開く形にする
+                    .datePickerStyle(.compact)
                 }
                 if !isEvent {
                     Picker("優先度", selection: $model.priority) {
