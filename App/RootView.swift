@@ -7,6 +7,7 @@ struct RootView: View {
     let model: TimelineModel
     let quickInput: QuickInputModel
     let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
+    let makeNewEditor: @MainActor (Date, Bool) -> ItemEditorModel
     @AppStorage(DayTitle.showsWeekNumberKey) private var showsWeekNumber = true
 
     private var title: String {
@@ -31,14 +32,14 @@ struct RootView: View {
                     DayNavigationControls(model: model)
                 }
                 Divider()
-                DayTimelineView(model: model, makeEditor: makeEditor)
+                DayTimelineView(model: model, makeEditor: makeEditor, makeNewEditor: makeNewEditor)
             }
             .navigationTitle(title)
         }
         #else
         TabView {
             NavigationStack {
-                DayTimelineView(model: model, makeEditor: makeEditor)
+                DayTimelineView(model: model, makeEditor: makeEditor, makeNewEditor: makeNewEditor)
                     .navigationTitle(title)
                     .navigationBarTitleDisplayMode(.inline)
             }

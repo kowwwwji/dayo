@@ -7,13 +7,15 @@ struct DayTimelineView: View {
     let model: TimelineModel
     /// 項目から詳細編集のモデルを作る。保存先（CalendarSource）は App が握る
     let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
+    /// 新規登録のモデルを作る。引数は開始日時と、終日として開くか
+    let makeNewEditor: @MainActor (Date, Bool) -> ItemEditorModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var editor: ItemEditorModel?
     @State private var editorAnchor: String?
     @State private var showsSettings = false
 
     private var editing: ItemEditing {
-        ItemEditing(editor: $editor, anchor: $editorAnchor, make: makeEditor)
+        ItemEditing(editor: $editor, anchor: $editorAnchor, make: makeEditor, makeNew: makeNewEditor)
     }
 
     var body: some View {

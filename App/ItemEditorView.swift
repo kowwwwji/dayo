@@ -4,21 +4,76 @@ import SwiftUI
 /// 項目をタップしたときにエディタを開くための配線。
 /// 開いているエディタは 1 つで、どの項目の上に出すかは `item.id` と開いた場所（`anchor`）で判定する。
 /// 日をまたぐ予定は複数の列に同じ項目が出るので、id だけだと全部の列に出てしまう。
+@MainActor
 struct ItemEditing {
     @Binding var editor: ItemEditorModel?
     @Binding var anchor: String?
     let make: @MainActor (TimelineItem) -> ItemEditorModel
+    /// 新規登録のモデルを作る。引数は開始日時と、終日として開くか
+    let makeNew: @MainActor (Date, Bool) -> ItemEditorModel
 
-    @MainActor func open(_ item: TimelineItem, at anchor: String? = nil) {
+    func open(_ item: TimelineItem, at anchor: String? = nil) {
+        // 繰り返しリマインダーの将来回は実体が無いので開かない
+        guard !item.isVirtual else { return }
         self.anchor = anchor
         editor = make(item)
     }
 
+    /// 新規登録を開く。`anchor` は登録先を示す仮の項目を置いた場所。
+    func openNew(at start: Date, isAllDay: Bool, anchor: String) {
+        self.anchor = anchor
+        editor = makeNew(start, isAllDay)
+    }
+
     func isPresented(for item: TimelineItem, at anchor: String? = nil) -> Binding<Bool> {
         Binding(
-            get: { editor?.item.id == item.id && self.anchor == anchor },
-            set: { if !$0, editor?.item.id == item.id, self.anchor == anchor { editor = nil } }
+            get: { isOpen(for: item, at: anchor) },
+            set: { if !$0, isOpen(for: item, at: anchor) { editor = nil } }
         )
+    }
+
+    func isPresentedForNew(at anchor: String) -> Binding<Bool> {
+        Binding(
+            get: { isOpenForNew(at: anchor) },
+            set: { if !$0, isOpenForNew(at: anchor) { editor = nil } }
+        )
+    }
+
+    private func isOpen(for item: TimelineItem, at anchor: String?) -> Bool {
+        editor?.isNew == false && editor?.item.id == item.id && self.anchor == anchor
+    }
+
+    /// その場所で新規登録を開いているか。仮の項目を出すかどうかの判定にも使う。
+    func isOpenForNew(at anchor: String) -> Bool {
+        editor?.isNew == true && self.anchor == anchor
+    }
+}
+
+extension View {
+    /// 新規登録のエディタを、登録先を示す仮の項目に付けて出す。
+    func newItemEditor(_ editing: ItemEditing, at anchor: String) -> some View {
+        modifier(NewItemEditorPresenter(editing: editing, anchor: anchor))
+    }
+}
+
+private struct NewItemEditorPresenter: ViewModifier {
+    let editing: ItemEditing
+    let anchor: String
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        content.popover(isPresented: editing.isPresentedForNew(at: anchor), arrowEdge: .trailing) {
+            if let editor = editing.editor {
+                ItemEditorView(model: editor)
+            }
+        }
+        #else
+        content.sheet(isPresented: editing.isPresentedForNew(at: anchor)) {
+            if let editor = editing.editor {
+                NavigationStack { ItemEditorView(model: editor) }
+            }
+        }
+        #endif
     }
 }
 
@@ -58,6 +113,7 @@ struct ItemEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var pendingAction: PendingAction?
     @State private var confirmsDelete = false
+    @FocusState private var titleFocused: Bool
 
     private enum PendingAction { case save, delete }
 
@@ -66,7 +122,21 @@ struct ItemEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             Form {
+                if model.isNew {
+                    Picker("種別", selection: Binding(
+                        get: { model.kind },
+                        set: { kind in Task { await model.setKind(kind) } }
+                    )) {
+                        Text("予定").tag(ItemKind.event)
+                        Text("リマインダー").tag(ItemKind.reminder)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
                 TextField("タイトル", text: $model.title)
+                    .focused($titleFocused)
+                    // 新規登録はタイトルを打って Enter で終わるようにする
+                    .onSubmit { if model.isNew { trigger(.save) } }
                 if !isEvent {
                     Toggle("期日", isOn: $model.hasDate)
                 }
@@ -128,12 +198,14 @@ struct ItemEditorView: View {
             .disabled(!model.item.isEditable)
             Divider()
             HStack {
-                Button("削除", role: .destructive) { trigger(.delete) }
-                    .disabled(!model.item.isEditable || model.isSaving)
+                if !model.isNew {
+                    Button("削除", role: .destructive) { trigger(.delete) }
+                        .disabled(!model.item.isEditable || model.isSaving)
+                }
                 Spacer()
                 Button("キャンセル") { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("保存") { trigger(.save) }
+                Button(model.isNew ? "登録" : "保存") { trigger(.save) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!model.item.isEditable || model.isSaving)
             }
@@ -153,7 +225,10 @@ struct ItemEditorView: View {
         #if os(macOS)
         .frame(width: 380, height: 480)
         #endif
-        .task { await model.loadDestinations() }
+        .task {
+            if model.isNew { titleFocused = true }
+            await model.loadDestinations()
+        }
         .confirmationDialog(
             "繰り返しの予定です",
             isPresented: Binding(

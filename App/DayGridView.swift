@@ -41,7 +41,17 @@ struct DayGridView: View {
     @State private var now = Date.now
     /// 繰り返し予定を落としたあと、範囲を聞いている間の保留。確定するまで落とした位置に置いたままにする
     @State private var pendingMove: GridMove?
+    /// ダブルクリックで新規登録を開いた場所。エディタを閉じるまで、そこに仮の項目を置く
+    @State private var newSlot: NewSlot?
     private let clock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+
+    private struct NewSlot {
+        let day: Date
+        let minute: Int
+    }
+
+    /// 新規登録のエディタを開く場所のキー。
+    private static let newItemAnchor = "grid-new"
 
     private var days: [Date] { columns.map(\.day) }
 
@@ -73,16 +83,21 @@ struct DayGridView: View {
                     scrollAnchors(axis)
                     hourLines(axis)
                     daySeparators
-                    bands(axis)
                     GeometryReader { geometry in
                         let dayWidth = Self.dayWidth(totalWidth: geometry.size.width, dayCount: columns.count)
                         ZStack(alignment: .topLeading) {
+                            #if os(macOS)
+                            newItemSurface(axis, dayWidth: dayWidth)
+                            #endif
                             items(axis, dayWidth: dayWidth)
+                            newItemPlaceholder(axis, dayWidth: dayWidth)
                             if let todayIndex {
                                 nowIndicator(axis, dayIndex: todayIndex, dayWidth: dayWidth, totalWidth: geometry.size.width)
                             }
                         }
                     }
+                    // 帯は登録用の面より上に置く。下だとダブルクリックの判定に取られて、クリックで開けなくなる
+                    bands(axis)
                 }
                 .frame(height: axis.totalHeight, alignment: .top)
                 .padding(.vertical, 8)
@@ -179,6 +194,49 @@ struct DayGridView: View {
                 .frame(height: 1)
                 .alignmentGuide(.top) { _ in -axis.y(forMinute: hour * 60) }
                 .id(Self.hourID(hour))
+        }
+    }
+
+    /// 空いている時間のダブルクリックを受ける面。項目より下に置くので、項目の上では反応しない。
+    private func newItemSurface(_ axis: DayGridAxis, dayWidth: CGFloat) -> some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .gesture(SpatialTapGesture(count: 2).onEnded { value in
+                let x = value.location.x - labelWidth
+                guard dayWidth > 0, x >= 0 else { return }
+                let dayIndex = Int(x / dayWidth)
+                guard columns.indices.contains(dayIndex) else { return }
+                // 押した位置を含む 15 分の枠から始める。予定の既定の長さ（1 時間）が日の中・帯の外に収まるよう寄せる
+                let minute = axis.clampedStart(minute: axis.minute(forY: value.location.y) / 15 * 15, duration: 60)
+                let day = columns[dayIndex].day
+                guard let start = Calendar.autoupdatingCurrent.date(byAdding: .minute, value: minute, to: day) else { return }
+                newSlot = NewSlot(day: day, minute: minute)
+                editing.openNew(at: start, isAllDay: false, anchor: Self.newItemAnchor)
+            })
+    }
+
+    /// 新規登録中の仮の項目。エディタはここから出す。入力中のタイトルと種別を映す。
+    @ViewBuilder
+    private func newItemPlaceholder(_ axis: DayGridAxis, dayWidth: CGFloat) -> some View {
+        if let newSlot, editing.isOpenForNew(at: Self.newItemAnchor), let dayIndex = days.firstIndex(of: newSlot.day) {
+            let editor = editing.editor
+            let isEvent = editor?.kind != .reminder
+            let title = editor?.title ?? ""
+            Text(title.isEmpty ? (isEvent ? "新規予定" : "新規リマインダー") : title)
+                .font(.dayoTitle.weight(.semibold))
+                .lineLimit(1)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .frame(
+                    width: max(0, dayWidth - (columns.count > 1 ? 5 : 2)),
+                    height: axis.height(fromMinute: newSlot.minute, to: min(24 * 60, newSlot.minute + (isEvent ? 60 : 30))) - 1,
+                    alignment: .topLeading
+                )
+                .background(.tint.opacity(0.25), in: RoundedRectangle(cornerRadius: 4))
+                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.tint, lineWidth: 1))
+                .newItemEditor(editing, at: Self.newItemAnchor)
+                .offset(x: labelWidth + dayWidth * CGFloat(dayIndex), y: axis.y(forMinute: newSlot.minute))
+                .zIndex(2)
         }
     }
 
@@ -371,7 +429,7 @@ private struct GridItemView: View {
             .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .contentShape(Rectangle())
-            .onTapGesture { editing.open(item, at: anchor) }
+            .onEditGesture { editing.open(item, at: anchor) }
             .itemEditor(for: item, editing, at: anchor)
         case .reminder:
             HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -392,13 +450,13 @@ private struct GridItemView: View {
                     EarlyReminderMark(minutes: item.earlyReminderMinutes)
                     Spacer(minLength: 0)
                 }
-                .contentShape(Rectangle())
-                .onTapGesture { editing.open(item, at: anchor) }
             }
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+            .contentShape(Rectangle())
+            .onEditGesture { editing.open(item, at: anchor) }
             .itemEditor(for: item, editing, at: anchor)
         }
     }

@@ -13,7 +13,6 @@ struct TimelineRow: View {
     var body: some View {
         HStack(spacing: 10) {
             leading
-            // チェック以外の部分をタップで詳細編集
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     PriorityMark(priority: item.priority)
@@ -32,7 +31,7 @@ struct TimelineRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .onTapGesture { editing.open(item, at: anchor) }
+            .onEditGesture { editing.open(item, at: anchor) }
             .itemEditor(for: item, editing, at: anchor)
         }
         .padding(.vertical, 2)

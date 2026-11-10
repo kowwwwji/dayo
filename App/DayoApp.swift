@@ -24,9 +24,37 @@ struct DayoApp: App {
         return editor
     }
 
+    /// 新規登録のモデル。種別は直近に登録したものから始め、登録できたら覚え直す
+    private func makeNewEditor(start: Date, isAllDay: Bool) -> ItemEditorModel {
+        let defaults = UserDefaults.standard
+        let editor = ItemEditorModel(
+            newItemOf: defaults.string(forKey: Self.lastCreatedKindKey) == "reminder" ? .reminder : .event,
+            start: start,
+            isAllDay: isAllDay,
+            defaultEarlyReminderMinutes: defaults.object(forKey: EarlyReminderSetting.key) as? Int
+                ?? EarlyReminderSetting.defaultMinutes,
+            source: source
+        )
+        let timeline = model
+        editor.onChanged = { [weak editor] in
+            if let kind = editor?.kind {
+                defaults.set(kind == .reminder ? "reminder" : "event", forKey: Self.lastCreatedKindKey)
+            }
+            await timeline.load()
+        }
+        return editor
+    }
+
+    private static let lastCreatedKindKey = "lastCreatedKind"
+
     var body: some Scene {
         WindowGroup {
-            RootView(model: model, quickInput: quickInput, makeEditor: makeEditor(for:))
+            RootView(
+                model: model,
+                quickInput: quickInput,
+                makeEditor: makeEditor(for:),
+                makeNewEditor: makeNewEditor(start:isAllDay:)
+            )
         }
         #if os(macOS)
         Settings {

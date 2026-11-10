@@ -42,9 +42,8 @@ struct AllDayChip: View {
         .padding(.vertical, 4)
         .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
         .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
-        // チップ全体をタップで編集（チェックのボタンはボタンが先に取る）
         .contentShape(Rectangle())
-        .onTapGesture { editing.open(item, at: Self.anchor) }
+        .onEditGesture { editing.open(item, at: Self.anchor) }
         .itemEditor(for: item, editing, at: Self.anchor)
         .opacity(item.isVirtual ? 0.45 : 1)
         .allowsHitTesting(!item.isVirtual)
