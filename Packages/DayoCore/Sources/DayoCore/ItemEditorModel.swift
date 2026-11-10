@@ -2,6 +2,7 @@ import Foundation
 import Observation
 
 /// 詳細編集の状態。1 件の `TimelineItem` を開いて直し、`ItemDraft` にして保存する。
+/// 新規登録にも使う。そのときは中身が空の仮の項目を持ち、保存で更新ではなく登録する。
 @MainActor
 @Observable
 public final class ItemEditorModel {
@@ -19,7 +20,11 @@ public final class ItemEditorModel {
         case unsupported
     }
 
-    public let item: TimelineItem
+    /// 編集中の項目。新規登録では仮の項目で、種別を切り替えると入れ替わる。
+    public private(set) var item: TimelineItem
+    /// まだ保存先に無い項目を作っているところか。
+    public let isNew: Bool
+    public var kind: ItemKind { item.kind }
     public var title: String
     public var notes: String
     /// reminder のみ。false なら期日なし。event は常に true 扱い。
@@ -43,13 +48,38 @@ public final class ItemEditorModel {
     private let source: CalendarSource
     private let calendar: Calendar
 
-    public init(
+    public convenience init(
         item: TimelineItem,
         source: CalendarSource,
         calendar: Calendar = QuickInputModel.defaultCalendar,
         now: Date = .now
     ) {
+        self.init(item: item, isNew: false, source: source, calendar: calendar, now: now)
+    }
+
+    /// 新規登録用。`start` はその日時（終日ならその日）。予定は 1 時間で始める。
+    public convenience init(
+        newItemOf kind: ItemKind,
+        start: Date,
+        isAllDay: Bool,
+        defaultEarlyReminderMinutes: Int = 0,
+        source: CalendarSource,
+        calendar: Calendar = QuickInputModel.defaultCalendar
+    ) {
+        let startValue = isAllDay ? calendar.startOfDay(for: start) : start
+        let placeholder = Self.placeholder(
+            kind: kind,
+            start: startValue,
+            end: isAllDay ? startValue : calendar.date(byAdding: .hour, value: 1, to: startValue) ?? startValue,
+            isAllDay: isAllDay,
+            earlyReminderMinutes: defaultEarlyReminderMinutes > 0 ? defaultEarlyReminderMinutes : nil
+        )
+        self.init(item: placeholder, isNew: true, source: source, calendar: calendar, now: start)
+    }
+
+    private init(item: TimelineItem, isNew: Bool, source: CalendarSource, calendar: Calendar, now: Date) {
         self.item = item
+        self.isNew = isNew
         self.source = source
         self.calendar = calendar
         title = item.title
@@ -66,6 +96,29 @@ public final class ItemEditorModel {
         earlyReminderMinutes = item.earlyReminderMinutes ?? 0
         recurrence = .none
         recurrence = Self.option(for: item, calendar: calendar)
+    }
+
+    /// 新規登録の仮の項目。保存先の識別子が空なので、選び直さなければ既定のカレンダー／リストに入る。
+    private static func placeholder(
+        kind: ItemKind, start: Date, end: Date, isAllDay: Bool, earlyReminderMinutes: Int?
+    ) -> TimelineItem {
+        TimelineItem(
+            id: "new", calendarItemIdentifier: "", kind: kind, title: "", start: start,
+            end: kind == .event ? end : nil, isAllDay: isAllDay, isCompleted: false,
+            sourceName: "既定", accountName: "", color: TimelineItem.fallbackColor,
+            recurrence: nil, isShared: false, earlyReminderMinutes: earlyReminderMinutes
+        )
+    }
+
+    /// 新規登録で予定とリマインダーを切り替える。入力済みの内容は残し、保存先だけ既定に戻す
+    /// （予定のカレンダーとリマインダーのリストは別物のため）。既存の項目の種別は変えられない。
+    public func setKind(_ kind: ItemKind) async {
+        guard isNew, kind != item.kind else { return }
+        item = Self.placeholder(
+            kind: kind, start: start, end: end, isAllDay: isAllDay, earlyReminderMinutes: item.earlyReminderMinutes
+        )
+        destinationID = ""
+        await loadDestinations()
     }
 
     // MARK: - 繰り返し
@@ -209,11 +262,15 @@ public final class ItemEditorModel {
             errorMessage = validationMessage
             return false
         }
+        if isNew {
+            return await perform { try await self.source.create(self.draft) }
+        }
         return await perform { try await self.source.update(self.item, with: self.draft, span: span) }
     }
 
     public func delete(span: EditSpan = .thisOccurrence) async -> Bool {
-        await perform { try await self.source.delete(self.item, span: span) }
+        guard !isNew else { return false }
+        return await perform { try await self.source.delete(self.item, span: span) }
     }
 
     private func perform(_ operation: () async throws -> Void) async -> Bool {

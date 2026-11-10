@@ -13,7 +13,11 @@ private final class EditingSource: CalendarSource {
     func requestAccess() async throws -> AccessStatus { .granted }
     func snapshot(for range: DateInterval, includingOverdue: Bool) async throws -> TimelineSnapshot { .empty }
     func setCompleted(_ completed: Bool, for item: TimelineItem) async throws {}
-    func create(_ draft: ItemDraft) async throws {}
+    private(set) var creates: [ItemDraft] = []
+    func create(_ draft: ItemDraft) async throws {
+        if let error { throw error }
+        creates.append(draft)
+    }
     func update(_ item: TimelineItem, with draft: ItemDraft, span: EditSpan) async throws {
         if let error { throw error }
         updates.append((item, draft, span))
@@ -335,5 +339,117 @@ private func item(
         #expect(RecurrenceSpec(rule: EKRecurrenceRule(recurrenceWith: .yearly, interval: 1, end: nil)) == nil)
         let ended = EKRecurrenceRule(recurrenceWith: .daily, interval: 1, end: EKRecurrenceEnd(occurrenceCount: 5))
         #expect(RecurrenceSpec(rule: ended) == nil)
+    }
+}
+
+@MainActor
+@Suite struct NewItemEditorModelTests {
+    let thursday10 = date(2026, 11, 12, 10)
+
+    private func makeModel(
+        kind: ItemKind = .event, isAllDay: Bool = false, earlyReminder: Int = 0, source: EditingSource = EditingSource()
+    ) -> ItemEditorModel {
+        ItemEditorModel(
+            newItemOf: kind, start: thursday10, isAllDay: isAllDay,
+            defaultEarlyReminderMinutes: earlyReminder, source: source, calendar: tokyo
+        )
+    }
+
+    @Test func aNewEventStartsEmptyWithOneHour() {
+        let model = makeModel()
+        #expect(model.isNew)
+        #expect(model.kind == .event)
+        #expect(model.title == "")
+        #expect(model.start == thursday10)
+        #expect(model.end == date(2026, 11, 12, 11))
+        #expect(model.recurrence == .none)
+        #expect(model.needsSpanChoice == false)
+    }
+
+    @Test func savingANewEventCreatesItInTheDefaultCalendar() async {
+        let source = EditingSource()
+        let model = makeModel(source: source)
+        model.title = "面談"
+        var changed = 0
+        model.onChanged = { changed += 1 }
+
+        let done = await model.save()
+
+        #expect(done)
+        #expect(source.updates.isEmpty)
+        #expect(source.creates == [ItemDraft(
+            kind: .event, title: "面談", start: thursday10, end: date(2026, 11, 12, 11), notes: ""
+        )])
+        #expect(changed == 1)
+    }
+
+    @Test func anEmptyTitleCreatesNothing() async {
+        let source = EditingSource()
+        let model = makeModel(source: source)
+
+        let done = await model.save()
+
+        #expect(done == false)
+        #expect(source.creates.isEmpty)
+        #expect(model.errorMessage == "タイトルを入力してください")
+    }
+
+    @Test func switchingToReminderKeepsWhatWasTypedAndDropsTheEnd() async {
+        let source = EditingSource()
+        source.destinationList = [
+            Destination(id: "cal", name: "仕事", kind: .event, color: CGColor(gray: 0, alpha: 1)),
+            Destination(id: "list", name: "家族", kind: .reminder, color: CGColor(gray: 0, alpha: 1)),
+        ]
+        let model = makeModel(earlyReminder: 10, source: source)
+        await model.loadDestinations()
+        #expect(model.destinations.map(\.id) == ["cal"])
+        model.title = "ゴミ出し"
+        model.destinationID = "cal"
+
+        await model.setKind(.reminder)
+
+        #expect(model.kind == .reminder)
+        #expect(model.title == "ゴミ出し")
+        #expect(model.destinations.map(\.id) == ["list"])
+        // 予定のカレンダーはリマインダーの保存先にできないので既定に戻す
+        #expect(model.destinationID == "")
+        _ = await model.save()
+        #expect(source.creates == [ItemDraft(
+            kind: .reminder, title: "ゴミ出し", start: thursday10, notes: "", earlyReminderMinutes: 10
+        )])
+    }
+
+    @Test func aNewAllDayReminderHasNoTimeAndNoEarlyReminder() async {
+        let source = EditingSource()
+        let model = makeModel(kind: .reminder, isAllDay: true, earlyReminder: 10, source: source)
+        model.title = "支払い"
+
+        _ = await model.save()
+
+        #expect(source.creates == [ItemDraft(
+            kind: .reminder, title: "支払い", start: date(2026, 11, 12), isAllDay: true, notes: ""
+        )])
+    }
+
+    @Test func aNewAllDayEventCoversThatDay() async {
+        let source = EditingSource()
+        let model = makeModel(isAllDay: true, source: source)
+        model.title = "出張"
+
+        _ = await model.save()
+
+        #expect(source.creates.first?.start == date(2026, 11, 12))
+        #expect(source.creates.first?.end == date(2026, 11, 12))
+        #expect(source.creates.first?.isAllDay == true)
+    }
+
+    @Test func theKindOfAnExistingItemCannotBeChanged() async {
+        let existing = item(kind: .event, start: thursday10, end: date(2026, 11, 12, 11))
+        let model = ItemEditorModel(item: existing, source: EditingSource(), calendar: tokyo, now: thursday10)
+
+        await model.setKind(.reminder)
+
+        #expect(model.isNew == false)
+        #expect(model.kind == .event)
     }
 }
