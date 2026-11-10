@@ -63,6 +63,67 @@ public struct RecurrenceSpec: Equatable, Sendable {
             return calendar.component(.month, from: nextWeek) != calendar.component(.month, from: day)
         }
     }
+
+    /// `anchor`（いま有る回の期日）より後の回のうち `range` に入るもの。`range.end` は含めない。
+    /// `interval` は起点から数え、曜日・日の指定が無い規則は起点の曜日・日で補う。時刻は起点のものを保つ。
+    public func occurrences(after anchor: Date, in range: DateInterval, calendar: Calendar) -> [Date] {
+        let anchorDay = calendar.startOfDay(for: anchor)
+        let time = calendar.dateComponents([.hour, .minute, .second], from: anchor)
+        let filled = filled(from: anchorDay, calendar: calendar)
+        guard let firstCandidate = calendar.date(byAdding: .day, value: 1, to: anchorDay) else { return [] }
+
+        var result: [Date] = []
+        var day = max(firstCandidate, calendar.startOfDay(for: range.start))
+        while day < range.end {
+            if filled.matches(day, calendar: calendar),
+               isOnInterval(day, from: anchorDay, calendar: calendar),
+               let date = calendar.date(
+                   bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: time.second ?? 0, of: day
+               ),
+               date >= range.start, date < range.end {
+                result.append(date)
+            }
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        return result
+    }
+
+    /// 曜日・日の指定が無い規則を、起点の曜日・日で補ったもの。
+    private func filled(from anchorDay: Date, calendar: Calendar) -> RecurrenceSpec {
+        var spec = self
+        switch frequency {
+        case .daily:
+            break
+        case .weekly:
+            if weekdays.isEmpty { spec.weekdays = [calendar.component(.weekday, from: anchorDay)] }
+        case .monthly:
+            if daysOfMonth.isEmpty, weekOfMonth == nil || weekdays.isEmpty {
+                spec.daysOfMonth = [calendar.component(.day, from: anchorDay)]
+            }
+        }
+        return spec
+    }
+
+    /// 起点から数えて `interval` 周期目に当たる日・週・月か。
+    private func isOnInterval(_ day: Date, from anchorDay: Date, calendar: Calendar) -> Bool {
+        guard interval > 1 else { return true }
+        let elapsed: Int?
+        switch frequency {
+        case .daily:
+            elapsed = calendar.dateComponents([.day], from: anchorDay, to: day).day
+        case .weekly:
+            guard let anchorWeek = calendar.dateInterval(of: .weekOfYear, for: anchorDay)?.start,
+                  let week = calendar.dateInterval(of: .weekOfYear, for: day)?.start
+            else { return false }
+            elapsed = calendar.dateComponents([.weekOfYear], from: anchorWeek, to: week).weekOfYear
+        case .monthly:
+            let from = calendar.dateComponents([.year, .month], from: anchorDay)
+            let to = calendar.dateComponents([.year, .month], from: day)
+            elapsed = ((to.year ?? 0) - (from.year ?? 0)) * 12 + (to.month ?? 0) - (from.month ?? 0)
+        }
+        return elapsed.map { $0 % interval == 0 } ?? false
+    }
 }
 
 /// クイック入力 1 行を要素に分解した結果。解釈できなかった語は `title` に残す。

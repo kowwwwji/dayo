@@ -45,7 +45,8 @@ public final class EventKitRepository: CalendarSource {
             : []
         return TimelineSnapshot(
             items: events + reminders.filter { $0.falls(in: range) },
-            overdue: overdue
+            overdue: overdue,
+            recurring: VirtualOccurrences.sources(in: reminders, before: range.end)
         )
     }
 

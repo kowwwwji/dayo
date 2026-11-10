@@ -42,6 +42,8 @@ public struct TimelineItem: Identifiable, Equatable {
     public var priority: ReminderPriority
     /// reminder のみ。期日の何分前に通知するか（早期リマインダー）。無ければ nil。
     public var earlyReminderMinutes: Int?
+    /// 繰り返しリマインダーの将来回を画面用に展開したもの。EventKit には実体が無いので操作できない。
+    public var isVirtual: Bool
 
     /// このアプリで表せない繰り返し規則を持つ。編集時に規則へ触らない。
     public var hasCustomRecurrence: Bool { hasRecurrence && recurrence == nil }
@@ -65,7 +67,8 @@ public struct TimelineItem: Identifiable, Equatable {
         calendarIdentifier: String = "",
         isEditable: Bool = true,
         priority: ReminderPriority = .none,
-        earlyReminderMinutes: Int? = nil
+        earlyReminderMinutes: Int? = nil,
+        isVirtual: Bool = false
     ) {
         self.id = id
         self.calendarItemIdentifier = calendarItemIdentifier
@@ -86,6 +89,7 @@ public struct TimelineItem: Identifiable, Equatable {
         self.isEditable = isEditable
         self.priority = priority
         self.earlyReminderMinutes = earlyReminderMinutes
+        self.isVirtual = isVirtual
     }
 
     /// 期間の日に表示すべきか。期日で判定し、期日なしのリマインダーは時間軸に載せない。
