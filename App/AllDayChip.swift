@@ -2,9 +2,11 @@ import DayoCore
 import SwiftUI
 
 /// 終日予定・期日のみのリマインダーを表す小さなチップ。グリッドの上に左から並べる。
+/// 週表示では `fillsWidth` で日をまたぐ帯として使う。繰り返しリマインダーの将来回（仮想項目）は薄く描き、操作を受け付けない。
 struct AllDayChip: View {
     let item: TimelineItem
     let editing: ItemEditing
+    var fillsWidth = false
     let onToggle: () -> Void
 
     private var color: Color { Color(cgColor: item.color) }
@@ -18,11 +20,11 @@ struct AllDayChip: View {
                     .frame(width: 3, height: 12)
             case .reminder:
                 Button(action: onToggle) {
-                    Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
+                    Image(systemName: item.isVirtual ? "circle.dotted" : item.isCompleted ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(color)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(item.isCompleted ? "未完了に戻す" : "完了にする")
+                .accessibilityLabel(item.isVirtual ? "今後の回" : item.isCompleted ? "未完了に戻す" : "完了にする")
             }
             PriorityMark(priority: item.priority)
                 .font(.dayoTitle)
@@ -35,11 +37,14 @@ struct AllDayChip: View {
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
+        .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
         .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
         // チップ全体をタップで編集（チェックのボタンはボタンが先に取る）
         .contentShape(Rectangle())
         .onTapGesture { editing.open(item) }
         .itemEditor(for: item, editing)
+        .opacity(item.isVirtual ? 0.45 : 1)
+        .allowsHitTesting(!item.isVirtual)
     }
 }
 

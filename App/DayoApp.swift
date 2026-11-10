@@ -8,7 +8,7 @@ struct DayoApp: App {
     private let source = EventKitRepository()
 
     init() {
-        let timeline = TimelineModel(source: source)
+        let timeline = TimelineModel(source: source, mode: TimelineModeSetting.stored)
         let quickInput = QuickInputModel(source: source)
         // 変更通知でも反映されるが、自分の登録は待たずに読み直す
         quickInput.onCreated = { await timeline.load() }

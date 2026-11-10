@@ -104,13 +104,22 @@ public final class TimelineModel {
         loadGeneration += 1
         let generation = loadGeneration
         let range = range
+        let includesOverdue = containsToday
+        let today = calendar.startOfDay(for: now())
         do {
-            let snapshot = try await source.snapshot(for: range, includingOverdue: containsToday)
+            let snapshot = try await source.snapshot(for: range, includingOverdue: includesOverdue)
             guard generation == loadGeneration else { return }
+            // 取得元の期限切れは範囲より前のものだけ。週表示では週の中の過ぎた日の未完了も足して、
+            // 日表示で今日を見たときと同じ内容にする（その日の列にも残る）
+            let overdueInRange = includesOverdue
+                ? snapshot.items.filter { item in
+                    item.kind == .reminder && !item.isCompleted && item.start.map { $0 < today } == true
+                }
+                : []
             let virtual = futureRange(in: range).map {
                 VirtualOccurrences.expand(snapshot.recurring, in: $0, calendar: calendar)
             } ?? []
-            timeline = DayTimeline(items: snapshot.items + virtual, overdue: snapshot.overdue)
+            timeline = DayTimeline(items: snapshot.items + virtual, overdue: snapshot.overdue + overdueInRange)
             layOut()
             hasLoaded = true
             loadedRange = range
@@ -181,6 +190,8 @@ public final class TimelineModel {
         }
         mode = newMode
         followsToday = containsToday
+        // 列の数は読み込みを待たずに合わせる。1 列のまま週の見出しが出ると列がずれて見える
+        layOut()
         await load()
     }
 

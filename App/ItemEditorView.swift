@@ -2,43 +2,48 @@ import DayoCore
 import SwiftUI
 
 /// 項目をタップしたときにエディタを開くための配線。
-/// 開いているエディタは 1 つで、どの項目の上に出すかは `item.id` で判定する。
+/// 開いているエディタは 1 つで、どの項目の上に出すかは `item.id` と開いた場所（`anchor`）で判定する。
+/// 日をまたぐ予定は複数の列に同じ項目が出るので、id だけだと全部の列に出てしまう。
 struct ItemEditing {
     @Binding var editor: ItemEditorModel?
+    @Binding var anchor: String?
     let make: @MainActor (TimelineItem) -> ItemEditorModel
 
-    @MainActor func open(_ item: TimelineItem) {
+    @MainActor func open(_ item: TimelineItem, at anchor: String? = nil) {
+        self.anchor = anchor
         editor = make(item)
     }
 
-    func isPresented(for item: TimelineItem) -> Binding<Bool> {
+    func isPresented(for item: TimelineItem, at anchor: String? = nil) -> Binding<Bool> {
         Binding(
-            get: { editor?.item.id == item.id },
-            set: { if !$0, editor?.item.id == item.id { editor = nil } }
+            get: { editor?.item.id == item.id && self.anchor == anchor },
+            set: { if !$0, editor?.item.id == item.id, self.anchor == anchor { editor = nil } }
         )
     }
 }
 
 extension View {
     /// Mac はその項目に付いたポップオーバー、iPhone はシートでエディタを出す。
-    func itemEditor(for item: TimelineItem, _ editing: ItemEditing) -> some View {
-        modifier(ItemEditorPresenter(item: item, editing: editing))
+    /// 同じ項目を複数の場所に出すビューは、場所ごとに違う `anchor` を渡す。
+    func itemEditor(for item: TimelineItem, _ editing: ItemEditing, at anchor: String? = nil) -> some View {
+        modifier(ItemEditorPresenter(item: item, editing: editing, anchor: anchor))
     }
 }
 
 private struct ItemEditorPresenter: ViewModifier {
     let item: TimelineItem
     let editing: ItemEditing
+    let anchor: String?
 
     func body(content: Content) -> some View {
         #if os(macOS)
-        content.popover(isPresented: editing.isPresented(for: item), arrowEdge: .trailing) {
+        content.popover(isPresented: editing.isPresented(for: item, at: anchor), arrowEdge: .trailing) {
             if let editor = editing.editor {
                 ItemEditorView(model: editor)
             }
         }
         #else
-        content.sheet(isPresented: editing.isPresented(for: item)) {
+        content.sheet(isPresented: editing.isPresented(for: item, at: anchor)) {
             if let editor = editing.editor {
                 NavigationStack { ItemEditorView(model: editor) }
             }

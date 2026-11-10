@@ -1,7 +1,7 @@
 import DayoCore
 import SwiftUI
 
-/// 1 日分の予定と Todo を 1 本の時間軸で見せる。
+/// 予定と Todo を 1 本の時間軸で見せる。日表示は 1 列、週表示は 7 列。
 /// 上部に終日・期限切れ、中央に時刻付きのグリッド。期日なしのリマインダーは扱わない。
 struct DayTimelineView: View {
     let model: TimelineModel
@@ -9,10 +9,11 @@ struct DayTimelineView: View {
     let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var editor: ItemEditorModel?
+    @State private var editorAnchor: String?
     @State private var showsSettings = false
 
     private var editing: ItemEditing {
-        ItemEditing(editor: $editor, make: makeEditor)
+        ItemEditing(editor: $editor, anchor: $editorAnchor, make: makeEditor)
     }
 
     var body: some View {
@@ -86,7 +87,13 @@ struct DayTimelineView: View {
 
     private var sections: some View {
         VStack(spacing: 0) {
-            if !model.timeline.allDay.isEmpty {
+            if model.mode == .week {
+                // 列と見出しがずれないよう、日付はモデルの範囲ではなく実際に並んでいる列から取る
+                WeekHeaderView(days: model.columns.map(\.day), spans: model.allDaySpans, editing: editing) { item in
+                    Task { await model.toggleCompleted(item) }
+                }
+                Divider()
+            } else if !model.timeline.allDay.isEmpty {
                 PinnedSection(title: "終日") {
                     FlowLayout(spacing: 6) {
                         ForEach(model.timeline.allDay) { item in
@@ -108,21 +115,26 @@ struct DayTimelineView: View {
             timed
         }
         .overlay {
-            if model.hasLoaded, model.timeline.isEmpty {
+            // 週表示は空でも曜日と時間軸を見せる
+            if model.mode == .day, model.hasLoaded, model.timeline.isEmpty {
                 ContentUnavailableView("予定も Todo もありません", systemImage: "checkmark.circle")
             }
         }
     }
 
     private var timed: some View {
-        DayGridView(
-            placements: model.placements,
-            day: model.day,
-            isToday: model.containsToday,
+DayGridView(
+            columns: model.columns,
             isLoaded: model.isLoadedForRange,
             editing: editing,
             onToggle: { item in Task { await model.toggleCompleted(item) } },
-            onMove: { item, minute, span in Task { await model.move(item, from: model.day, toDay: model.day, startMinute: minute, span: span) } }
+            onMove: { move, span in
+                Task {
+                    await model.move(
+                        move.item, from: move.originDay, toDay: move.targetDay, startMinute: move.minute, span: span
+                    )
+                }
+            }
         )
     }
 

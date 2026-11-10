@@ -1,18 +1,25 @@
 import DayoCore
 import SwiftUI
 
-/// 0〜24 時の時間軸に予定とリマインダーを配置する。重なりは列に分けて横に並べる。
+/// ドラッグで落とした先。`originDay` は掴んだ列の日（日をまたぐ予定は列ごとに切れ端が出る）。
+struct GridMove {
+    let item: TimelineItem
+    let originDay: Date
+    let targetDay: Date
+    let minute: Int
+}
+
+/// 0〜24 時の時間軸に予定とリマインダーを配置する。日ごとの列を横に並べ（日表示は 1 列）、時刻目盛りは左に 1 本だけ描く。
+/// 重なりは列の中でさらに分けて横に並べる。
 /// 設定した表示時間帯の外に何も無ければ、その時間帯は帯に畳む（クリックで開く）。
 struct DayGridView: View {
-    let placements: [GridPlacement]
-    let day: Date
-    let isToday: Bool
-    /// 表示中の日の内容が読み込み済みか。帯の有無が確定してから初期位置へスクロールする
+    let columns: [TimelineColumn]
+    /// 表示中の範囲の内容が読み込み済みか。帯の有無が確定してから初期位置へスクロールする
     let isLoaded: Bool
     let editing: ItemEditing
     let onToggle: (TimelineItem) -> Void
-    /// ドラッグで落とした。開始分と、繰り返し予定ならどの回に及ぶか
-    let onMove: (TimelineItem, Int, EditSpan) -> Void
+    /// ドラッグで落とした。繰り返し予定ならどの回に及ぶかも渡す
+    let onMove: (GridMove, EditSpan) -> Void
 
     private let hourHeight: CGFloat = 56
     private let collapsedHeight: CGFloat = 22
@@ -22,31 +29,38 @@ struct DayGridView: View {
     static let trailingInset: CGFloat = 12
     private var trailingInset: CGFloat { Self.trailingInset }
 
+    /// 1 日分の列幅。上に固定する週の見出しも同じ式で揃える。
+    static func dayWidth(totalWidth: CGFloat, dayCount: Int) -> CGFloat {
+        max(0, totalWidth - labelWidth - trailingInset) / CGFloat(max(1, dayCount))
+    }
+
     @AppStorage(DayHours.startKey) private var startHour = DayHours.defaultStart
     @AppStorage(DayHours.endKey) private var endHour = DayHours.defaultEnd
-    /// ユーザーが開いた側。日を変えたら畳み直す。
+    /// ユーザーが開いた側。表示する日を変えたら畳み直す。
     @State private var expanded: Set<DayGridAxis.Edge> = []
     @State private var now = Date.now
     /// 繰り返し予定を落としたあと、範囲を聞いている間の保留。確定するまで落とした位置に置いたままにする
-    @State private var pendingMove: PendingMove?
+    @State private var pendingMove: GridMove?
     private let clock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
-    private struct PendingMove: Identifiable {
-        let item: TimelineItem
-        let minute: Int
-        var id: String { item.id }
+    private var days: [Date] { columns.map(\.day) }
+
+    /// 今日の列。表示範囲に今日が無ければ nil。
+    private var todayIndex: Int? {
+        days.firstIndex { Calendar.autoupdatingCurrent.isDate($0, inSameDayAs: now) }
     }
 
     private var axis: DayGridAxis {
         DayGridAxis(
             hourHeight: hourHeight,
             collapsedHeight: collapsedHeight,
+            // 全列をまとめて渡し、どの日にも何も無い時間帯だけを畳む（軸は全列で 1 本）
             collapsed: DayGridAxis.collapsedRanges(
-                placements: placements,
+                placements: columns.flatMap(\.placements),
                 startHour: startHour,
                 endHour: endHour,
                 expanded: expanded,
-                nowMinute: isToday ? nowMinute : nil
+                nowMinute: todayIndex != nil ? nowMinute : nil
             )
         )
     }
@@ -56,25 +70,30 @@ struct DayGridView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 ZStack(alignment: .topLeading) {
+                    scrollAnchors(axis)
                     hourLines(axis)
+                    daySeparators
                     bands(axis)
                     GeometryReader { geometry in
-                        items(axis, availableWidth: geometry.size.width)
-                    }
-                    if isToday {
-                        nowIndicator(axis)
+                        let dayWidth = Self.dayWidth(totalWidth: geometry.size.width, dayCount: columns.count)
+                        ZStack(alignment: .topLeading) {
+                            items(axis, dayWidth: dayWidth)
+                            if let todayIndex {
+                                nowIndicator(axis, dayIndex: todayIndex, dayWidth: dayWidth, totalWidth: geometry.size.width)
+                            }
+                        }
                     }
                 }
-                .frame(height: axis.totalHeight)
+                .frame(height: axis.totalHeight, alignment: .top)
                 .padding(.vertical, 8)
             }
             .onAppear {
-                if isLoaded { scrollToStart(proxy, axis) }
+                if isLoaded { scrollToStart(proxy) }
             }
-            .onChange(of: day) { _, _ in expanded = [] }
+            .onChange(of: days) { _, _ in expanded = [] }
             // 日を変えた直後は前の日の内容で帯が決まっているので、読み込み完了を待ってから位置を合わせる
             .onChange(of: isLoaded) { _, loaded in
-                if loaded { scrollToStart(proxy, self.axis) }
+                if loaded { scrollToStart(proxy) }
             }
             .onReceive(clock) { now = $0 }
             .confirmationDialog(
@@ -83,37 +102,60 @@ struct DayGridView: View {
                 titleVisibility: .visible,
                 presenting: pendingMove
             ) { move in
-                Button("この回のみ") { onMove(move.item, move.minute, .thisOccurrence) }
-                Button("以降すべて") { onMove(move.item, move.minute, .futureOccurrences) }
+                Button("この回のみ") { onMove(move, .thisOccurrence) }
+                Button("以降すべて") { onMove(move, .futureOccurrences) }
                 Button("キャンセル", role: .cancel) {}
             } message: { _ in
-                Text("どの回の時刻を変えますか？")
+                Text("どの回の日時を変えますか？")
             }
         }
     }
 
-    /// 落とし先の開始分。移動量を 15 分刻みに丸め、実際の長さで日の中・帯の外に収める
+    /// 落とし先。縦は移動量を 15 分刻みに丸め、実際の長さで日の中・帯の外に収める
     /// （表示上の最小の高さではなく実際の長さを使う。リマインダーは長さ 0 なので 23:45 にも置ける）。
-    private func dropMinute(for placement: GridPlacement, translation: CGFloat, axis: DayGridAxis) -> Int {
+    /// 横は列単位で、表示中の日の外へは出さない。
+    private func dropTarget(
+        for placement: GridPlacement, dayIndex: Int, translation: CGSize, axis: DayGridAxis, dayWidth: CGFloat
+    ) -> GridDropTarget {
         let item = placement.item
         let realDuration = item.start.flatMap { start in item.end.map { Int($0.timeIntervalSince(start) / 60) } } ?? 0
-        return axis.moveTarget(startMinute: placement.startMinute, duration: max(1, realDuration), translation: translation)
+        let minute = axis.moveTarget(
+            startMinute: placement.startMinute, duration: max(1, realDuration), translation: translation.height
+        )
+        let shift = dayWidth > 0 ? Int((translation.width / dayWidth).rounded()) : 0
+        let targetIndex = max(0, min(columns.count - 1, dayIndex + shift))
+        return GridDropTarget(dayOffset: targetIndex - dayIndex, minute: minute)
     }
 
-    private func requestMove(_ placement: GridPlacement, to minute: Int) {
-        guard minute != placement.startMinute else { return }
+    private func requestMove(_ placement: GridPlacement, from dayIndex: Int, to target: GridDropTarget) {
+        guard target.minute != placement.startMinute || target.dayOffset != 0,
+              columns.indices.contains(dayIndex + target.dayOffset)
+        else { return }
         let item = placement.item
+        let move = GridMove(
+            item: item,
+            originDay: columns[dayIndex].day,
+            targetDay: columns[dayIndex + target.dayOffset].day,
+            minute: target.minute
+        )
         if item.kind == .event, item.hasRecurrence {
-            pendingMove = PendingMove(item: item, minute: minute)
+            pendingMove = move
         } else {
-            onMove(item, minute, .thisOccurrence)
+            onMove(move, .thisOccurrence)
         }
     }
 
     /// 確認待ちの項目を落とした位置に置いておくためのずらし量。
-    private func pendingOffset(for placement: GridPlacement, axis: DayGridAxis) -> CGFloat {
-        guard let pendingMove, pendingMove.id == placement.id else { return 0 }
-        return axis.y(forMinute: pendingMove.minute) - axis.y(forMinute: placement.startMinute)
+    private func pendingOffset(
+        for placement: GridPlacement, dayIndex: Int, axis: DayGridAxis, dayWidth: CGFloat
+    ) -> CGSize {
+        guard let pendingMove, pendingMove.item.id == placement.id, pendingMove.originDay == columns[dayIndex].day,
+              let targetIndex = days.firstIndex(of: pendingMove.targetDay)
+        else { return .zero }
+        return CGSize(
+            width: CGFloat(targetIndex - dayIndex) * dayWidth,
+            height: axis.y(forMinute: pendingMove.minute) - axis.y(forMinute: placement.startMinute)
+        )
     }
 
     private func hourLines(_ axis: DayGridAxis) -> some View {
@@ -129,8 +171,36 @@ struct DayGridView: View {
             }
             .frame(height: 12)
             .offset(y: axis.y(forMinute: hour * 60) - 6)
-            .id(Self.hourID(hour))
         }
+    }
+
+    /// 初期スクロールの行き先。目盛りや帯は `offset` で置いていて配置上の位置を持たないので、
+    /// 時刻ごとに位置を持つ透明な線を別に置く。畳んだ時間帯の時刻は帯の上端になる。
+    private func scrollAnchors(_ axis: DayGridAxis) -> some View {
+        ForEach(0..<24, id: \.self) { hour in
+            Color.clear
+                .frame(height: 1)
+                .alignmentGuide(.top) { _ in -axis.y(forMinute: hour * 60) }
+                .id(Self.hourID(hour))
+        }
+    }
+
+    /// 日の区切り線。1 列なら描かない。
+    private var daySeparators: some View {
+        HStack(spacing: 0) {
+            ForEach(columns.indices, id: \.self) { index in
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay(alignment: .leading) {
+                        if index > 0 {
+                            Rectangle().fill(.quaternary).frame(width: 1)
+                        }
+                    }
+            }
+        }
+        .padding(.leading, labelWidth)
+        .padding(.trailing, trailingInset)
+        .allowsHitTesting(false)
     }
 
     /// 畳んだ時間帯。クリックで開く。
@@ -154,33 +224,41 @@ struct DayGridView: View {
             .contentShape(Rectangle())
             .onTapGesture { expanded.insert(range.lowerBound == 0 ? .early : .late) }
             .offset(y: frame.y)
-            .id(Self.bandID(range))
         }
     }
 
-    private func items(_ axis: DayGridAxis, availableWidth: CGFloat) -> some View {
-        let gridWidth = max(0, availableWidth - labelWidth - trailingInset)
-        return ForEach(placements) { placement in
-            let columnWidth = gridWidth / CGFloat(max(1, placement.columnCount))
-            let x = labelWidth + columnWidth * CGFloat(placement.column)
-            let pending = pendingOffset(for: placement, axis: axis)
-            GridItemView(
-                placement: placement,
-                editing: editing,
-                labelColumnWidth: labelWidth - 6,
-                distanceToGridLeft: x,
-                onToggle: { onToggle(placement.item) },
-                dropMinute: { translation in dropMinute(for: placement, translation: translation, axis: axis) },
-                onDrop: { minute in requestMove(placement, to: minute) }
-            )
+    private func items(_ axis: DayGridAxis, dayWidth: CGFloat) -> some View {
+        // 複数列のときは隣の日の項目とくっつかないよう、列の右に少し隙間を空ける
+        let contentWidth = max(0, dayWidth - (columns.count > 1 ? 3 : 0))
+        return ForEach(Array(columns.enumerated()), id: \.element.id) { dayIndex, column in
+            ForEach(column.placements) { placement in
+                let columnWidth = contentWidth / CGFloat(max(1, placement.columnCount))
+                let x = labelWidth + dayWidth * CGFloat(dayIndex) + columnWidth * CGFloat(placement.column)
+                let pending = pendingOffset(for: placement, dayIndex: dayIndex, axis: axis, dayWidth: dayWidth)
+                GridItemView(
+                    placement: placement,
+                    anchor: Self.anchor(for: column.day),
+                    editing: editing,
+                    labelColumnWidth: labelWidth - 6,
+                    distanceToGridLeft: x,
+                    dayWidth: dayWidth,
+                    onToggle: { onToggle(placement.item) },
+                    dropTarget: { translation in
+                        dropTarget(
+                            for: placement, dayIndex: dayIndex, translation: translation, axis: axis, dayWidth: dayWidth
+                        )
+                    },
+                    onDrop: { target in requestMove(placement, from: dayIndex, to: target) }
+                )
                 .frame(
                     width: max(0, columnWidth - 2),
                     height: max(18, axis.height(fromMinute: placement.startMinute, to: placement.endMinute) - 1),
                     alignment: .topLeading
                 )
-                .opacity(pending == 0 ? 1 : 0.85)
-                .zIndex(pending == 0 ? 0 : 1)
-                .offset(x: x, y: axis.y(forMinute: placement.startMinute) + pending)
+                .opacity(pending == .zero ? 1 : 0.85)
+                .zIndex(pending == .zero ? 0 : 1)
+                .offset(x: x + pending.width, y: axis.y(forMinute: placement.startMinute) + pending.height)
+            }
         }
     }
 
@@ -189,73 +267,85 @@ struct DayGridView: View {
         return (components.hour ?? 0) * 60 + (components.minute ?? 0)
     }
 
-    /// 現在時刻の赤線。現在時刻を含む側は畳まないので、常に目盛りの上に出る。
-    private func nowIndicator(_ axis: DayGridAxis) -> some View {
-        let minute = nowMinute
+    /// 現在時刻の赤線。今日の列に引く。現在時刻を含む側は畳まないので、常に目盛りの上に出る。
+    private func nowIndicator(_ axis: DayGridAxis, dayIndex: Int, dayWidth: CGFloat, totalWidth: CGFloat) -> some View {
+        let x = labelWidth - 4 + dayWidth * CGFloat(dayIndex)
         return HStack(spacing: 0) {
             Circle().fill(.red).frame(width: 7, height: 7)
             Rectangle().fill(.red).frame(height: 1)
         }
-        .padding(.leading, labelWidth - 4)
-        .offset(y: axis.y(forMinute: minute) - 3.5)
+        // 1 列なら右端まで、複数列なら今日の列の幅だけ
+        .frame(width: columns.count > 1 ? dayWidth + 4 : max(0, totalWidth - x))
+        .offset(x: x, y: axis.y(forMinute: nowMinute) - 3.5)
         .allowsHitTesting(false)
     }
 
-    /// 今日は現在時刻の 1 時間前、他の日は一日の開始（畳まれていればその帯）が上端に来るようにする。
-    private func scrollToStart(_ proxy: ScrollViewProxy, _ axis: DayGridAxis) {
-        let targetHour = isToday
+    /// 今日を含むなら現在時刻の 1 時間前、含まなければ一日の開始（畳まれていればその帯）が上端に来るようにする。
+    private func scrollToStart(_ proxy: ScrollViewProxy) {
+        let targetHour = todayIndex != nil
             ? max(0, Calendar.autoupdatingCurrent.component(.hour, from: now) - 1)
             : startHour
-        if let band = axis.collapsed.first(where: { $0.contains(targetHour * 60) }) {
-            proxy.scrollTo(Self.bandID(band), anchor: .top)
-        } else {
-            proxy.scrollTo(Self.hourID(targetHour), anchor: .top)
-        }
+        proxy.scrollTo(Self.hourID(targetHour), anchor: .top)
     }
 
+    /// エディタを開いた場所のキー。日をまたぐ予定は複数の列に出るので、列の日で区別する。
+    private static func anchor(for day: Date) -> String { "grid-\(day.timeIntervalSince1970)" }
     private static func hourID(_ hour: Int) -> String { "hour-\(hour)" }
-    private static func bandID(_ range: Range<Int>) -> String { "band-\(range.lowerBound)" }
+}
+
+/// ドラッグの落とし先。`dayOffset` は掴んだ列から何列動かすか。
+private struct GridDropTarget {
+    let dayOffset: Int
+    let minute: Int
 }
 
 /// グリッド上の 1 項目。予定はカレンダー色のブロック、リマインダーはチェック付きの行。
-/// 上下にドラッグすると時刻を変える（Mac はそのまま、iPhone は長押ししてから）。
+/// ドラッグすると時刻と日を変える（Mac はそのまま、iPhone は長押ししてから）。縦は自由に、横は列単位で動く。
 /// ドラッグ中のずらしと時刻ラベルはこの中で描く。親の状態を毎フレーム更新するとグリッド全体が描き直されてちらつくため。
+/// 繰り返しリマインダーの将来回（仮想項目）は薄く描き、操作を受け付けない。
 private struct GridItemView: View {
     let placement: GridPlacement
+    /// エディタを開く場所のキー
+    let anchor: String
     let editing: ItemEditing
     /// 目盛りの列の幅と、この項目の左端からグリッド左端までの距離。ドラッグ中の時刻をその列に出すのに使う
     let labelColumnWidth: CGFloat
     let distanceToGridLeft: CGFloat
+    let dayWidth: CGFloat
     let onToggle: () -> Void
-    /// 移動量（pt）から落とし先の開始分を求める
-    let dropMinute: (CGFloat) -> Int
-    let onDrop: (Int) -> Void
+    /// 移動量（pt）から落とし先を求める
+    let dropTarget: (CGSize) -> GridDropTarget
+    let onDrop: (GridDropTarget) -> Void
 
     /// `@GestureState` はジェスチャが中断（スクロール開始・ウィンドウ切替）されても自動で 0 に戻る
-    @GestureState private var translation: CGFloat = 0
+    @GestureState private var translation: CGSize = .zero
 
     private var item: TimelineItem { placement.item }
     private var color: Color { Color(cgColor: item.color) }
-    private var isDragging: Bool { translation != 0 }
+    private var isDragging: Bool { translation != .zero }
 
     var body: some View {
+        let target = isDragging ? dropTarget(translation) : nil
+        let shiftX = CGFloat(target?.dayOffset ?? 0) * dayWidth
         content
-            .opacity(isDragging ? 0.85 : 1)
+            .opacity(item.isVirtual ? 0.45 : (isDragging ? 0.85 : 1))
             .overlay(alignment: .topLeading) {
-                if isDragging {
-                    Text(Self.timeText(minute: dropMinute(translation)))
+                if let target {
+                    Text(Self.timeText(minute: target.minute))
                         .font(.dayoDetail.monospacedDigit().weight(.semibold))
                         .foregroundStyle(.tint)
                         .frame(width: labelColumnWidth, alignment: .trailing)
                         .padding(.vertical, 1)
                         .background(.background)
-                        .offset(x: -distanceToGridLeft, y: -7)
+                        // 項目ごと横へずれるので、その分を戻して目盛りの列に留める
+                        .offset(x: -distanceToGridLeft - shiftX, y: -7)
                         .allowsHitTesting(false)
                 }
             }
-            .offset(y: translation)
+            .offset(x: shiftX, y: translation.height)
             .zIndex(isDragging ? 1 : 0)
             .gesture(item.isEditable ? moveGesture : nil)
+            .allowsHitTesting(!item.isVirtual)
     }
 
     @ViewBuilder
@@ -271,6 +361,8 @@ private struct GridItemView: View {
                     if placement.durationMinutes >= 45, let start = item.start, let end = item.end {
                         Text("\(start.formatted(date: .omitted, time: .shortened))–\(end.formatted(date: .omitted, time: .shortened))")
                             .font(.dayoDetail)
+                            // 週表示の狭い列で 1 文字ずつ折り返さないようにする
+                            .lineLimit(1)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -282,16 +374,16 @@ private struct GridItemView: View {
             .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .contentShape(Rectangle())
-            .onTapGesture { editing.open(item) }
-            .itemEditor(for: item, editing)
+            .onTapGesture { editing.open(item, at: anchor) }
+            .itemEditor(for: item, editing, at: anchor)
         case .reminder:
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Button(action: onToggle) {
-                    Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
+                    Image(systemName: item.isVirtual ? "circle.dotted" : item.isCompleted ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(color)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(item.isCompleted ? "未完了に戻す" : "完了にする")
+                .accessibilityLabel(item.isVirtual ? "今後の回" : item.isCompleted ? "未完了に戻す" : "完了にする")
                 HStack(spacing: 4) {
                     PriorityMark(priority: item.priority)
                         .font(.dayoTitle)
@@ -304,13 +396,13 @@ private struct GridItemView: View {
                     Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())
-                .onTapGesture { editing.open(item) }
+                .onTapGesture { editing.open(item, at: anchor) }
             }
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
-            .itemEditor(for: item, editing)
+            .itemEditor(for: item, editing, at: anchor)
         }
     }
 
@@ -323,20 +415,20 @@ private struct GridItemView: View {
             .sequenced(before: DragGesture(minimumDistance: 0))
             .updating($translation) { value, state, _ in
                 if case .second(true, let drag?) = value {
-                    state = drag.translation.height
+                    state = drag.translation
                 }
             }
             .onEnded { value in
                 if case .second(true, let drag?) = value {
-                    onDrop(dropMinute(drag.translation.height))
+                    onDrop(dropTarget(drag.translation))
                 }
             }
     }
     #else
     private var moveGesture: some Gesture {
         DragGesture(minimumDistance: 6)
-            .updating($translation) { value, state, _ in state = value.translation.height }
-            .onEnded { value in onDrop(dropMinute(value.translation.height)) }
+            .updating($translation) { value, state, _ in state = value.translation }
+            .onEnded { value in onDrop(dropTarget(value.translation)) }
     }
     #endif
 

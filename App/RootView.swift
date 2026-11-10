@@ -10,7 +10,10 @@ struct RootView: View {
     @AppStorage(DayTitle.showsWeekNumberKey) private var showsWeekNumber = true
 
     private var title: String {
-        DayTitle.text(for: model.day, showsWeekNumber: showsWeekNumber)
+        switch model.mode {
+        case .day: DayTitle.text(for: model.day, showsWeekNumber: showsWeekNumber)
+        case .week: DayTitle.text(forWeek: model.days, showsWeekNumber: showsWeekNumber)
+        }
     }
 
     var body: some View {
@@ -23,7 +26,7 @@ struct RootView: View {
             .navigationSplitViewColumnWidth(min: 160, ideal: 200)
         } detail: {
             VStack(spacing: 0) {
-                // 日付の移動は入力欄と同じ行の右端に置く。日付そのものはウィンドウタイトルに出す
+                // 日 | 週 の切替と日付の移動は入力欄と同じ行の右端に置く。日付そのものはウィンドウタイトルに出す
                 QuickInputBar(model: quickInput) {
                     DayNavigationControls(model: model)
                 }

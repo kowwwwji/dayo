@@ -341,6 +341,44 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(source.requests.map(\.includingOverdue) == [false, true, false, true])
     }
 
+    @Test func overdueInTheWeekMatchesTheDayViewOfToday() async {
+        let source = FakeSource()
+        // 今日（火）より前に期日が過ぎた未完了は、週の中の日（月）でも期限切れ欄に出す。列にも残す
+        let lastWeek = item("先週", start: iso("2026-11-01T09:00:00Z"))
+        let monday = item("月曜", start: iso("2026-11-09T09:00:00Z"))
+        var done = item("完了済み", start: iso("2026-11-09T10:00:00Z"))
+        done.isCompleted = true
+        let todayItem = item("今日", start: iso("2026-11-10T09:00:00Z"))
+        let event = TimelineItem(
+            id: "予定", calendarItemIdentifier: "予定", kind: .event, title: "予定",
+            start: iso("2026-11-09T13:00:00Z"), end: iso("2026-11-09T14:00:00Z"), isAllDay: false,
+            isCompleted: false, sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1),
+            recurrence: nil, isShared: false
+        )
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [monday, done, todayItem, event], overdue: [lastWeek]
+        )
+        let model = makeModel(source) { iso("2026-11-10T08:00:00Z") }
+
+        await model.activate()
+
+        #expect(model.timeline.overdue.map(\.id) == ["先週", "月曜"])
+        #expect(model.columns[1].placements.map(\.id) == ["月曜", "完了済み", "予定"])
+    }
+
+    @Test func otherWeeksHaveNoOverdue() async {
+        let source = FakeSource()
+        source.snapshots[iso("2026-11-01T00:00:00Z")] = TimelineSnapshot(
+            items: [item("過去", start: iso("2026-11-03T09:00:00Z"))], overdue: []
+        )
+        let model = makeModel(source) { self.today }
+
+        await model.showPrevious()
+
+        #expect(model.timeline.overdue.isEmpty)
+        #expect(model.columns[2].placements.map(\.id) == ["過去"])
+    }
+
     @Test func allDayItemsBecomeSpansInWeekMode() async {
         let source = FakeSource()
         let trip = TimelineItem(
@@ -370,6 +408,21 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         await model.setMode(.day)
         #expect(model.columns.map(\.day) == [today])
         #expect(source.requests.map(\.range.start) == [today, weekStart, today])
+    }
+
+    @Test func switchingModeLaysOutColumnsBeforeTheLoadFinishes() async {
+        let source = FakeSource()
+        let model = makeModel(source, mode: .day) { self.today }
+        await model.activate()
+
+        // 読み込みを待つ間も列の数は新しい表示に合っている（週の見出しと列がずれない）
+        source.gate = true
+        let task = Task { await model.setMode(.week) }
+        await source.waitForPending(1)
+        #expect(model.columns.map(\.day) == (8...14).map(day))
+
+        source.release(at: 0)
+        await task.value
     }
 
     @Test func settingTheSameModeDoesNotReload() async {
