@@ -46,6 +46,7 @@ struct WeekHeaderView: View {
                 .padding(.trailing, DayGridView.trailingInset)
         }
         .onDisappear { board.allDayFrame = nil }
+        .onChange(of: days) { _, _ in newDay = nil }
         .onReceive(clock) { now = $0 }
     }
 

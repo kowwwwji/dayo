@@ -112,7 +112,10 @@ struct DayGridView: View {
             .onAppear {
                 if isLoaded { scrollToStart(proxy) }
             }
-            .onChange(of: days) { _, _ in expanded = [] }
+            .onChange(of: days) { _, _ in
+                expanded = []
+                newSlot = nil
+            }
             // 日を変えた直後は前の日の内容で帯が決まっているので、読み込み完了を待ってから位置を合わせる
             .onChange(of: isLoaded) { _, loaded in
                 if loaded { scrollToStart(proxy) }

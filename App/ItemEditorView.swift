@@ -225,8 +225,13 @@ struct ItemEditorView: View {
         #if os(macOS)
         .frame(width: 380, height: 480)
         #endif
+        // ポップオーバーが前面に出てからでないとフォーカスが入らないので、表示の次の周回で当てる
+        .onAppear {
+            if model.isNew {
+                DispatchQueue.main.async { titleFocused = true }
+            }
+        }
         .task {
-            if model.isNew { titleFocused = true }
             await model.loadDestinations()
         }
         .confirmationDialog(

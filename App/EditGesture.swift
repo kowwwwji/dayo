@@ -54,7 +54,9 @@ private struct RightClickCatcher: NSViewRepresentable {
         /// このビューの見えている範囲への右クリック（または control + クリック）か。
         /// スクロールで隠れている部分は `visibleRect` に入らないので反応しない。
         private func catches(_ event: NSEvent) -> Bool {
-            guard event.window === window, !isHiddenOrHasHiddenAncestor else { return false }
+            // シート（繰り返しの範囲を聞くダイアログなど）が出ている間は、その下の項目を開かない
+            guard let window, event.window === window, window.attachedSheet == nil, !isHiddenOrHasHiddenAncestor
+            else { return false }
             let isSecondaryClick = event.type == .rightMouseDown
                 || (event.type == .leftMouseDown && event.modifierFlags.contains(.control))
             guard isSecondaryClick else { return false }

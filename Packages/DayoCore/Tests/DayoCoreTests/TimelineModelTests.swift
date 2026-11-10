@@ -740,6 +740,29 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
     }
 }
 
+@Suite struct AllDayDraftTests {
+    private func timedReminder() -> TimelineItem {
+        TimelineItem(
+            id: "r", calendarItemIdentifier: "r", kind: .reminder, title: "電話",
+            start: iso("2026-11-10T09:00:00Z"), end: nil, isAllDay: false, isCompleted: false,
+            sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil,
+            isShared: false, earlyReminderMinutes: 10
+        )
+    }
+
+    @Test func makingAReminderAllDayDropsItsEarlyReminder() {
+        // 時刻なしの期日は鳴る時刻が定まらないので、早期リマインダーは残さない
+        let draft = ItemDraft(makingAllDay: timedReminder(), on: iso("2026-11-10T00:00:00Z"))
+        #expect(draft.isAllDay)
+        #expect(draft.earlyReminderMinutes == nil)
+    }
+
+    @Test func movingKeepsTheEarlyReminderOnlyForTimedItems() {
+        #expect(ItemDraft(moving: timedReminder(), to: iso("2026-11-11T09:00:00Z")).earlyReminderMinutes == 10)
+        #expect(ItemDraft(moving: timedReminder(), to: iso("2026-11-11T00:00:00Z"), isAllDay: true).earlyReminderMinutes == nil)
+    }
+}
+
 @Suite struct MoveDraftTests {
     @Test func keepsDurationAndAttributes() {
         let start = iso("2026-11-10T09:00:00Z")

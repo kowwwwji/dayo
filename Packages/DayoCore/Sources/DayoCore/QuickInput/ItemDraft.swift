@@ -76,7 +76,8 @@ extension ItemDraft {
             recurrence: item.recurrence,
             notes: item.notes,
             priority: item.priority,
-            earlyReminderMinutes: item.earlyReminderMinutes
+            // 時刻なしの期日は鳴る時刻が定まらないので付けない
+            earlyReminderMinutes: isAllDay ? nil : item.earlyReminderMinutes
         )
     }
 }
