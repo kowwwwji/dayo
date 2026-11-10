@@ -10,6 +10,7 @@ struct DayTimelineView: View {
     @AppStorage(TimelineStyle.storageKey) private var style: TimelineStyle = .grid
     @Environment(\.scenePhase) private var scenePhase
     @State private var editor: ItemEditorModel?
+    @State private var showsSettings = false
 
     private var editing: ItemEditing {
         ItemEditing(editor: $editor, make: makeEditor)
@@ -58,6 +59,21 @@ struct DayTimelineView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .frame(width: 100)
+            #if os(iOS)
+            // iPhone には設定ウィンドウが無いのでここから開く（Mac は ⌘,）
+            Button { showsSettings = true } label: {
+                Image(systemName: "gearshape")
+            }
+            .sheet(isPresented: $showsSettings) {
+                NavigationStack {
+                    SettingsView()
+                        .navigationTitle("設定")
+                        .toolbar {
+                            Button("完了") { showsSettings = false }
+                        }
+                }
+            }
+            #endif
         }
         .buttonStyle(.borderless)
         .padding(.horizontal)
@@ -115,7 +131,7 @@ struct DayTimelineView: View {
     private var timed: some View {
         switch style {
         case .grid:
-            DayGridView(placements: model.placements, isToday: model.isToday, editing: editing) { item in
+            DayGridView(placements: model.placements, day: model.day, isToday: model.isToday, isLoaded: model.isLoadedForDay, editing: editing) { item in
                 Task { await model.toggleCompleted(item) }
             }
         case .list:

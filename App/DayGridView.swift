@@ -2,47 +2,78 @@ import DayoCore
 import SwiftUI
 
 /// 0〜24 時の時間軸に予定とリマインダーを配置する。重なりは列に分けて横に並べる。
+/// 設定した表示時間帯の外に何も無ければ、その時間帯は帯に畳む（クリックで開く）。
 struct DayGridView: View {
     let placements: [GridPlacement]
+    let day: Date
     let isToday: Bool
+    /// 表示中の日の内容が読み込み済みか。帯の有無が確定してから初期位置へスクロールする
+    let isLoaded: Bool
     let editing: ItemEditing
     let onToggle: (TimelineItem) -> Void
 
     private let hourHeight: CGFloat = 56
+    private let collapsedHeight: CGFloat = 22
     /// 時刻ラベルの列幅。上に固定する「終日」行のラベルも同じ幅にして揃える。
     static let labelWidth: CGFloat = 48
     private var labelWidth: CGFloat { Self.labelWidth }
     static let trailingInset: CGFloat = 12
     private var trailingInset: CGFloat { Self.trailingInset }
 
+    @AppStorage(DayHours.startKey) private var startHour = DayHours.defaultStart
+    @AppStorage(DayHours.endKey) private var endHour = DayHours.defaultEnd
+    /// ユーザーが開いた側。日を変えたら畳み直す。
+    @State private var expanded: Set<DayGridAxis.Edge> = []
     @State private var now = Date.now
     private let clock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
+    private var axis: DayGridAxis {
+        DayGridAxis(
+            hourHeight: hourHeight,
+            collapsedHeight: collapsedHeight,
+            collapsed: DayGridAxis.collapsedRanges(
+                placements: placements,
+                startHour: startHour,
+                endHour: endHour,
+                expanded: expanded,
+                nowMinute: isToday ? nowMinute : nil
+            )
+        )
+    }
+
     var body: some View {
+        let axis = self.axis
         ScrollViewReader { proxy in
             ScrollView {
                 ZStack(alignment: .topLeading) {
-                    hourLines
+                    hourLines(axis)
+                    bands(axis)
                     GeometryReader { geometry in
-                        items(availableWidth: geometry.size.width)
+                        items(axis, availableWidth: geometry.size.width)
                     }
                     if isToday {
-                        nowIndicator
+                        nowIndicator(axis)
                     }
                 }
-                .frame(height: hourHeight * 24)
+                .frame(height: axis.totalHeight)
                 .padding(.vertical, 8)
             }
-            .onAppear { scrollToStart(proxy) }
-            .onChange(of: isToday) { _, _ in scrollToStart(proxy) }
+            .onAppear {
+                if isLoaded { scrollToStart(proxy, axis) }
+            }
+            .onChange(of: day) { _, _ in expanded = [] }
+            // 日を変えた直後は前の日の内容で帯が決まっているので、読み込み完了を待ってから位置を合わせる
+            .onChange(of: isLoaded) { _, loaded in
+                if loaded { scrollToStart(proxy, self.axis) }
+            }
             .onReceive(clock) { now = $0 }
         }
     }
 
-    private var hourLines: some View {
-        ForEach(0..<24, id: \.self) { hour in
+    private func hourLines(_ axis: DayGridAxis) -> some View {
+        ForEach(axis.visibleHours, id: \.self) { hour in
             HStack(alignment: .center, spacing: 6) {
-                Text(String(format: "%d:00", hour))
+                Text(DayHours.label(hour))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .frame(width: labelWidth - 6, alignment: .trailing)
@@ -51,51 +82,84 @@ struct DayGridView: View {
                     .frame(height: 1)
             }
             .frame(height: 12)
-            .offset(y: CGFloat(hour) * hourHeight - 6)
-            .id(hour)
+            .offset(y: axis.y(forMinute: hour * 60) - 6)
+            .id(Self.hourID(hour))
         }
     }
 
-    private func items(availableWidth: CGFloat) -> some View {
+    /// 畳んだ時間帯。クリックで開く。
+    private func bands(_ axis: DayGridAxis) -> some View {
+        ForEach(axis.collapsed, id: \.lowerBound) { range in
+            let frame = axis.bandFrame(for: range)
+            HStack(spacing: 6) {
+                Text("\(DayHours.label(range.lowerBound / 60)) 〜 \(DayHours.label(range.upperBound / 60))")
+                    .font(.caption2.monospacedDigit())
+                Text("予定なし")
+                    .font(.caption2)
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.caption2)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .frame(height: frame.height)
+            .frame(maxWidth: .infinity)
+            .background(.quaternary.opacity(0.5))
+            .contentShape(Rectangle())
+            .onTapGesture { expanded.insert(range.lowerBound == 0 ? .early : .late) }
+            .offset(y: frame.y)
+            .id(Self.bandID(range))
+        }
+    }
+
+    private func items(_ axis: DayGridAxis, availableWidth: CGFloat) -> some View {
         let gridWidth = max(0, availableWidth - labelWidth - trailingInset)
         return ForEach(placements) { placement in
             let columnWidth = gridWidth / CGFloat(max(1, placement.columnCount))
             GridItemView(placement: placement, editing: editing) { onToggle(placement.item) }
                 .frame(
                     width: max(0, columnWidth - 2),
-                    height: max(18, y(forMinute: placement.durationMinutes) - 1),
+                    height: max(18, axis.height(fromMinute: placement.startMinute, to: placement.endMinute) - 1),
                     alignment: .topLeading
                 )
                 .offset(
                     x: labelWidth + columnWidth * CGFloat(placement.column),
-                    y: y(forMinute: placement.startMinute)
+                    y: axis.y(forMinute: placement.startMinute)
                 )
         }
     }
 
-    private var nowIndicator: some View {
+    private var nowMinute: Int {
         let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: now)
-        let minute = (components.hour ?? 0) * 60 + (components.minute ?? 0)
+        return (components.hour ?? 0) * 60 + (components.minute ?? 0)
+    }
+
+    /// 現在時刻の赤線。現在時刻を含む側は畳まないので、常に目盛りの上に出る。
+    private func nowIndicator(_ axis: DayGridAxis) -> some View {
+        let minute = nowMinute
         return HStack(spacing: 0) {
             Circle().fill(.red).frame(width: 7, height: 7)
             Rectangle().fill(.red).frame(height: 1)
         }
         .padding(.leading, labelWidth - 4)
-        .offset(y: y(forMinute: minute) - 3.5)
+        .offset(y: axis.y(forMinute: minute) - 3.5)
         .allowsHitTesting(false)
     }
 
-    private func y(forMinute minute: Int) -> CGFloat {
-        CGFloat(minute) / 60 * hourHeight
+    /// 今日は現在時刻の 1 時間前、他の日は一日の開始（畳まれていればその帯）が上端に来るようにする。
+    private func scrollToStart(_ proxy: ScrollViewProxy, _ axis: DayGridAxis) {
+        let targetHour = isToday
+            ? max(0, Calendar.autoupdatingCurrent.component(.hour, from: now) - 1)
+            : startHour
+        if let band = axis.collapsed.first(where: { $0.contains(targetHour * 60) }) {
+            proxy.scrollTo(Self.bandID(band), anchor: .top)
+        } else {
+            proxy.scrollTo(Self.hourID(targetHour), anchor: .top)
+        }
     }
 
-    /// 今日は現在時刻の 1 時間前、他の日は 8 時が上端に来るようにする。
-    private func scrollToStart(_ proxy: ScrollViewProxy) {
-        let hour = isToday
-            ? max(0, (Calendar.autoupdatingCurrent.component(.hour, from: now)) - 1)
-            : 8
-        proxy.scrollTo(hour, anchor: .top)
-    }
+    private static func hourID(_ hour: Int) -> String { "hour-\(hour)" }
+    private static func bandID(_ range: Range<Int>) -> String { "band-\(range.lowerBound)" }
 }
 
 /// グリッド上の 1 項目。予定はカレンダー色のブロック、リマインダーはチェック付きの行。
