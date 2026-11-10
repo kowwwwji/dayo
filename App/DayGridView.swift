@@ -105,7 +105,7 @@ private struct GridItemView: View {
     var body: some View {
         switch item.kind {
         case .event:
-            HStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 0) {
                 Rectangle().fill(color).frame(width: 3)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.title)
@@ -125,7 +125,7 @@ private struct GridItemView: View {
             .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
             .clipShape(RoundedRectangle(cornerRadius: 4))
         case .reminder:
-            HStack(spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Button(action: onToggle) {
                     Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(color)
@@ -140,7 +140,8 @@ private struct GridItemView: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 5)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
         }
     }
