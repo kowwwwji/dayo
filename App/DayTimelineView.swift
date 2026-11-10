@@ -124,7 +124,8 @@ struct DayTimelineView: View {
     }
 }
 
-/// グリッドの上に固定する小さなセクション。
+/// グリッドの上に固定する小さなセクション。左にラベル、右に中身を置く（Apple カレンダーの「終日」行と同じ形）。
+/// ラベル幅はグリッドの時刻ラベルに合わせ、縦の線が揃うようにする。
 /// `scrollHeight` を渡すと行数に応じた高さ（上限あり）で内部スクロールする。渡さなければ中身の高さそのまま。
 private struct PinnedSection<Content: View>: View {
     let title: String
@@ -132,10 +133,12 @@ private struct PinnedSection<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .top, spacing: 6) {
             Text(title)
-                .font(.caption)
+                .font(.caption2)
                 .foregroundStyle(.secondary)
+                .frame(width: DayGridView.labelWidth - 6, alignment: .trailing)
+                .padding(.top, 4)
             if let scrollHeight {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 6) {
@@ -150,7 +153,6 @@ private struct PinnedSection<Content: View>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal)
         .padding(.vertical, 6)
     }

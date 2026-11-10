@@ -8,7 +8,9 @@ struct DayGridView: View {
     let onToggle: (TimelineItem) -> Void
 
     private let hourHeight: CGFloat = 56
-    private let labelWidth: CGFloat = 48
+    /// 時刻ラベルの列幅。上に固定する「終日」行のラベルも同じ幅にして揃える。
+    static let labelWidth: CGFloat = 48
+    private var labelWidth: CGFloat { Self.labelWidth }
     private let trailingInset: CGFloat = 12
 
     @State private var now = Date.now
