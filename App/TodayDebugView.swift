@@ -33,7 +33,7 @@ struct TodayDebugView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
                     .strikethrough(item.isCompleted)
-                Text("\(timeLabel(item)) · \(item.sourceName) (\(item.accountName))")
+                Text("\(timeLabel(item)) · \(item.sourceName)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
