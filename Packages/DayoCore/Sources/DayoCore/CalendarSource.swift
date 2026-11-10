@@ -33,6 +33,8 @@ public enum CalendarSourceError: LocalizedError, Equatable {
     case eventNeedsStart
     /// 保存先のカレンダー／リストが無い（アカウント未設定など）。
     case noCalendar
+    /// `#名前` に一致するリスト／カレンダーが無い。
+    case listNotFound(String)
 
     public var errorDescription: String? {
         switch self {
@@ -40,6 +42,7 @@ public enum CalendarSourceError: LocalizedError, Equatable {
         case .notAReminder: "この操作はリマインダーにしか使えません。"
         case .eventNeedsStart: "予定には日時が必要です。"
         case .noCalendar: "保存先のカレンダーまたはリストがありません。"
+        case .listNotFound(let name): "「\(name)」というリストやカレンダーはありません。"
         }
     }
 }

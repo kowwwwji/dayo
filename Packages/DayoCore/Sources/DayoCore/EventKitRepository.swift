@@ -61,7 +61,7 @@ public final class EventKitRepository: CalendarSource {
     public func create(_ draft: ItemDraft) async throws {
         switch draft.kind {
         case .reminder:
-            guard let calendar = calendar(named: draft.listName, for: .reminder)
+            guard let calendar = try calendar(named: draft.listName, for: .reminder)
                 ?? store.defaultCalendarForNewReminders()
             else { throw CalendarSourceError.noCalendar }
             let reminder = EKReminder(eventStore: store)
@@ -80,7 +80,7 @@ public final class EventKitRepository: CalendarSource {
             try store.save(reminder, commit: true)
         case .event:
             guard let start = draft.start else { throw CalendarSourceError.eventNeedsStart }
-            guard let calendar = calendar(named: draft.listName, for: .event)
+            guard let calendar = try calendar(named: draft.listName, for: .event)
                 ?? store.defaultCalendarForNewEvents
             else { throw CalendarSourceError.noCalendar }
             let event = EKEvent(eventStore: store)
@@ -97,10 +97,14 @@ public final class EventKitRepository: CalendarSource {
     }
 
     /// 名前でカレンダー／リストを探す。名前が無ければ nil（呼び出し側で既定にする）。
-    private func calendar(named name: String?, for entity: EKEntityType) -> EKCalendar? {
+    /// 名前があるのに見つからなければエラー。黙って既定に入れると、意図しない場所に登録されたことに気づけない。
+    private func calendar(named name: String?, for entity: EKEntityType) throws -> EKCalendar? {
         guard let name, !name.isEmpty else { return nil }
         let candidates = store.calendars(for: entity).filter { $0.allowsContentModifications }
-        return Self.match(name, in: candidates, title: \.title)
+        guard let found = Self.match(name, in: candidates, title: \.title) else {
+            throw CalendarSourceError.listNotFound(name)
+        }
+        return found
     }
 
     /// 完全一致 → 前方一致の順に探す。大文字小文字は区別しない。
