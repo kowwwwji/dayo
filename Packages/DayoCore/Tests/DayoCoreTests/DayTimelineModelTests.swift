@@ -29,6 +29,8 @@ private final class FakeSource: CalendarSource {
         completions.append((item.id, completed))
     }
 
+    func create(_ draft: ItemDraft) async throws {}
+
     var changes: AsyncStream<Void> { AsyncStream { _ in } }
 
     func release(at index: Int) {

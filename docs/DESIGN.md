@@ -108,18 +108,21 @@ struct TimelineItem: Identifiable {
 struct ParsedInput {
     var title: String
     var kind: ItemKind            // 既定 reminder
-    var date: DateComponents?
+    var date: DateComponents?     // 参照日で解決済みの年月日
     var time: DateComponents?
-    var recurrence: EKRecurrenceRule?
+    var endTime: DateComponents?  // 「10時-11時」の終了側。eventのとき使う
+    var recurrence: RecurrenceSpec?
     var listName: String?
 }
 ```
 
+繰り返しは `EKRecurrenceRule` ではなく自前の `RecurrenceSpec`（頻度・間隔・曜日・第n週・日）で持つ。`EKRecurrenceRule` は値として比較できずテーブルテストに向かないため。`EKRecurrenceRule` への変換は `EventKitRepository` 側で行う。
+
 | 要素 | 記法 | 変換先 |
 | --- | --- | --- |
-| 繰り返し | 毎日 / 平日 / 毎週月曜 / 毎週月水金 / 隔週火曜 / 毎月15日 / 毎月第2火曜 / 毎月最終金曜 / 毎月1日 / 3日ごと | `EKRecurrenceRule`（frequency, interval, daysOfTheWeek, daysOfTheMonth, weekNumber -1） |
+| 繰り返し | 毎日 / 平日 / 毎週月曜 / 毎週月水金 / 隔週火曜 / 毎月15日 / 毎月第2火曜 / 毎月最終金曜 / 毎月1日 / 3日ごと | `RecurrenceSpec`（frequency, interval, weekdays, daysOfMonth, weekOfMonth -1=最終） |
 | 日付 | 今日 / 明日 / 明後日 / 来週水曜 / 11/20 / 20日 / 3日後 | `DateComponents`。過去日付は翌月・翌年へ繰り上げ |
-| 時刻 | 9時 / 9:30 / 21時 / 午後3時 / 朝 / 昼 / 夜 | `DateComponents`。朝=8:00、昼=12:00、夜=20:00（設定で変更可） |
+| 時刻 | 9時 / 9:30 / 21時 / 午後3時 / 朝 / 昼 / 夜 | `DateComponents`。朝=8:00、昼=12:00、夜=20:00（設定で変更可）。日付を書かずに過ぎた時刻だけ書いたら翌日（繰り返しなら次の該当日） |
 | リスト | #家族 / #仕事 | リスト名の前方一致。無ければ既定リスト |
 | 種別 | @予定、または「10時-11時」のような時間帯 | event（Googleカレンダーへ） |
 
@@ -133,7 +136,7 @@ struct ParsedInput {
 | 金曜 10時-11時 面談 @予定 | event、今週金曜 10:00–11:00 |
 | 牛乳買う | reminder、期日なし |
 
-解釈できなかった語はタイトルに残し、プレビューのチップをタップして手で直せるようにする。パーサーは `protocol InputParser` にしておき、後でLLM実装と差し替えられるようにする。
+解釈できなかった語はタイトルに残し、プレビューのチップをタップして手で直せるようにする（MVPのチップは表示のみ。手直しは詳細編集で行う）。時刻付きリマインダーには期日時刻の `EKAlarm` を付ける（無いと純正アプリが通知しない）。パーサーは `protocol InputParser` にしておき、後でLLM実装と差し替えられるようにする。
 
 ## 同期・権限・制約
 

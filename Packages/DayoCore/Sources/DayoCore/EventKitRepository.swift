@@ -58,6 +58,68 @@ public final class EventKitRepository: CalendarSource {
         try store.save(reminder, commit: true)
     }
 
+    public func create(_ draft: ItemDraft) async throws {
+        switch draft.kind {
+        case .reminder:
+            guard let calendar = calendar(named: draft.listName, for: .reminder)
+                ?? store.defaultCalendarForNewReminders()
+            else { throw CalendarSourceError.noCalendar }
+            let reminder = EKReminder(eventStore: store)
+            reminder.title = draft.title
+            reminder.calendar = calendar
+            if let start = draft.start {
+                reminder.dueDateComponents = Self.dueComponents(for: start, allDay: draft.isAllDay, timeZone: timeZone)
+                // 期日時刻の通知は純正リマインダーが出す。アラームが無いと時刻付きでも通知されない
+                if !draft.isAllDay {
+                    reminder.addAlarm(EKAlarm(absoluteDate: start))
+                }
+            }
+            if let recurrence = draft.recurrence {
+                reminder.addRecurrenceRule(EKRecurrenceRule(recurrence))
+            }
+            try store.save(reminder, commit: true)
+        case .event:
+            guard let start = draft.start else { throw CalendarSourceError.eventNeedsStart }
+            guard let calendar = calendar(named: draft.listName, for: .event)
+                ?? store.defaultCalendarForNewEvents
+            else { throw CalendarSourceError.noCalendar }
+            let event = EKEvent(eventStore: store)
+            event.title = draft.title
+            event.calendar = calendar
+            event.startDate = start
+            event.endDate = draft.end ?? start
+            event.isAllDay = draft.isAllDay
+            if let recurrence = draft.recurrence {
+                event.addRecurrenceRule(EKRecurrenceRule(recurrence))
+            }
+            try store.save(event, span: .thisEvent, commit: true)
+        }
+    }
+
+    /// 名前でカレンダー／リストを探す。名前が無ければ nil（呼び出し側で既定にする）。
+    private func calendar(named name: String?, for entity: EKEntityType) -> EKCalendar? {
+        guard let name, !name.isEmpty else { return nil }
+        let candidates = store.calendars(for: entity).filter { $0.allowsContentModifications }
+        return Self.match(name, in: candidates, title: \.title)
+    }
+
+    /// 完全一致 → 前方一致の順に探す。大文字小文字は区別しない。
+    static func match<C>(_ name: String, in candidates: [C], title: (C) -> String) -> C? {
+        let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+        return candidates.first { title($0).compare(name, options: options) == .orderedSame }
+            ?? candidates.first { title($0).range(of: name, options: options.union(.anchored)) != nil }
+    }
+
+    /// 期日。終日は年月日だけ、時刻ありは時分まで（純正リマインダーと同じ持ち方）。
+    static func dueComponents(for date: Date, allDay: Bool, timeZone: TimeZone) -> DateComponents {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let units: Set<Calendar.Component> = allDay
+            ? [.year, .month, .day]
+            : [.year, .month, .day, .hour, .minute]
+        return calendar.dateComponents(units, from: date)
+    }
+
     /// 同期中は通知がまとめて届くため、未処理分は 1 件に畳む。
     public var changes: AsyncStream<Void> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
