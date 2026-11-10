@@ -140,8 +140,7 @@ public final class TimelineModel {
     }
 
     /// ドラッグで別の時刻・別の日へ動かした。`originDay` は掴んだ列の日、`minute` は落とした列での開始分。
-    /// 表示は先に動かし（楽観更新。離した瞬間に元の位置へ戻ってちらつかないため）、保存後に読み直す。
-    /// 失敗したらメッセージを出し、読み直して元に戻す。
+    /// 表示は先に動かす（離した瞬間に元の位置へ戻ってちらつかないため）。
     public func move(
         _ item: TimelineItem,
         from originDay: Date,
@@ -157,14 +156,45 @@ public final class TimelineModel {
         else { return }
         // 表示上の移動量だけずらす。前日から続く予定は 0:00 で切って表示しているので、絶対位置にすると飛ぶ
         let delta = TimeInterval((minute - placement.startMinute) * 60)
-        let draft = ItemDraft(moving: item, to: shifted.addingTimeInterval(delta))
+        await apply(ItemDraft(moving: item, to: shifted.addingTimeInterval(delta)), to: item, span: span)
+    }
 
+    /// 終日の項目を日単位で動かした。複数日にまたがる予定は長さを保つ。
+    public func moveAllDay(_ item: TimelineItem, byDays days: Int, span: EditSpan) async {
+        guard days != 0, isChangeable(item), item.isAllDay, let start = item.start,
+              let shifted = calendar.date(byAdding: .day, value: days, to: start)
+        else { return }
+        await apply(ItemDraft(moving: item, to: shifted, isAllDay: true), to: item, span: span)
+    }
+
+    /// 終日の項目を時間軸へ落とした。その日のその時刻から始まる時刻付きの項目にする。
+    public func makeTimed(_ item: TimelineItem, onDay day: Date, startMinute minute: Int, span: EditSpan) async {
+        guard isChangeable(item), item.isAllDay,
+              let start = calendar.date(byAdding: .minute, value: minute, to: calendar.startOfDay(for: day))
+        else { return }
+        await apply(ItemDraft(scheduling: item, at: start), to: item, span: span)
+    }
+
+    /// 時刻付きの項目を終日欄へ落とした。その日の終日にする。
+    public func makeAllDay(_ item: TimelineItem, onDay day: Date, span: EditSpan) async {
+        guard isChangeable(item), !item.isAllDay, item.start != nil else { return }
+        await apply(ItemDraft(makingAllDay: item, on: calendar.startOfDay(for: day)), to: item, span: span)
+    }
+
+    private func isChangeable(_ item: TimelineItem) -> Bool {
+        !item.isVirtual && item.isEditable
+    }
+
+    /// 日時の変更を保存する。表示は先に変え（楽観更新）、保存後に読み直す。失敗したら元に戻してメッセージを出す。
+    private func apply(_ draft: ItemDraft, to item: TimelineItem, span: EditSpan) async {
         let previous = timeline
-        if let index = timeline.timed.firstIndex(where: { $0.id == item.id }) {
-            timeline.timed[index].start = draft.start
-            timeline.timed[index].end = draft.end
-            layOut()
-        }
+        var updated = item
+        updated.start = draft.start
+        updated.end = draft.end
+        updated.isAllDay = draft.isAllDay
+        let others = (timeline.allDay + timeline.timed).filter { $0.id != item.id }
+        timeline = DayTimeline(items: others + [updated], overdue: timeline.overdue)
+        layOut()
         // 進行中の読み込み（同期通知など）が古い内容で楽観更新を上書きしないようにする
         loadGeneration += 1
 

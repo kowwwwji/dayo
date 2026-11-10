@@ -595,6 +595,151 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
     }
 }
 
+@MainActor
+@Suite struct TimelineModelAllDayTests {
+    let today = iso("2026-11-10T00:00:00Z")
+    let weekStart = iso("2026-11-08T00:00:00Z")
+
+    private func day(_ dayOfMonth: Int) -> Date {
+        iso("2026-11-\(String(format: "%02d", dayOfMonth))T00:00:00Z")
+    }
+
+    private func make(
+        _ id: String, kind: ItemKind, start: Date, end: Date? = nil, allDay: Bool,
+        recurrence: RecurrenceSpec? = nil, isVirtual: Bool = false
+    ) -> TimelineItem {
+        TimelineItem(
+            id: id, calendarItemIdentifier: id, kind: kind, title: id, start: start, end: end,
+            isAllDay: allDay, isCompleted: false, sourceName: "", accountName: "",
+            color: CGColor(gray: 0, alpha: 1), recurrence: recurrence, isShared: false, isVirtual: isVirtual
+        )
+    }
+
+    private func loaded(_ items: [TimelineItem], source: FakeSource = FakeSource()) async -> (TimelineModel, FakeSource) {
+        source.snapshots[weekStart] = TimelineSnapshot(items: items, overdue: [])
+        let model = TimelineModel(source: source, calendar: utc, mode: .week) { self.today }
+        await model.activate()
+        return (model, source)
+    }
+
+    @Test func movingAnAllDayEventShiftsItByDaysAndKeepsItsLength() async {
+        let trip = make("出張", kind: .event, start: day(9), end: iso("2026-11-10T23:59:59Z"), allDay: true)
+        let (model, source) = await loaded([trip])
+
+        source.gate = true
+        let task = Task { await model.moveAllDay(trip, byDays: 2, span: .thisOccurrence) }
+        await source.waitForPending(1)
+
+        #expect(model.allDaySpans.map(\.firstColumn) == [3])
+        #expect(model.allDaySpans.map(\.columnSpan) == [2])
+        #expect(source.updates.first?.draft.start == day(11))
+        #expect(source.updates.first?.draft.end == iso("2026-11-12T23:59:59Z"))
+        #expect(source.updates.first?.draft.isAllDay == true)
+
+        source.release(at: 0)
+        await task.value
+    }
+
+    @Test func movingADateOnlyReminderKeepsItDateOnly() async {
+        let due = make("支払い", kind: .reminder, start: day(10), allDay: true)
+        let (model, source) = await loaded([due])
+
+        await model.moveAllDay(due, byDays: -1, span: .thisOccurrence)
+
+        #expect(source.updates.first?.draft.start == day(9))
+        #expect(source.updates.first?.draft.end == nil)
+        #expect(source.updates.first?.draft.isAllDay == true)
+    }
+
+    @Test func droppingAnAllDayEventOnTheGridMakesItOneHourAtThatTime() async {
+        let trip = make("出張", kind: .event, start: day(9), end: iso("2026-11-10T23:59:59Z"), allDay: true)
+        let (model, source) = await loaded([trip])
+
+        source.gate = true
+        let task = Task { await model.makeTimed(trip, onDay: self.day(12), startMinute: 600, span: .thisOccurrence) }
+        await source.waitForPending(1)
+
+        #expect(model.allDaySpans.isEmpty)
+        #expect(model.columns[4].placements.map(\.startMinute) == [600])
+        #expect(model.columns[4].placements.map(\.endMinute) == [660])
+        #expect(source.updates.first?.draft.start == iso("2026-11-12T10:00:00Z"))
+        #expect(source.updates.first?.draft.end == iso("2026-11-12T11:00:00Z"))
+        #expect(source.updates.first?.draft.isAllDay == false)
+
+        source.release(at: 0)
+        await task.value
+    }
+
+    @Test func droppingADateOnlyReminderOnTheGridGivesItADueTime() async {
+        let due = make("支払い", kind: .reminder, start: day(10), allDay: true)
+        let (model, source) = await loaded([due])
+
+        await model.makeTimed(due, onDay: day(10), startMinute: 15 * 60 + 30, span: .thisOccurrence)
+
+        #expect(source.updates.first?.draft.start == iso("2026-11-10T15:30:00Z"))
+        #expect(source.updates.first?.draft.end == nil)
+        #expect(source.updates.first?.draft.isAllDay == false)
+    }
+
+    @Test func droppingATimedEventOnTheAllDayRowMakesItAllDayThatDay() async {
+        let meeting = make(
+            "面談", kind: .event, start: iso("2026-11-10T09:00:00Z"), end: iso("2026-11-10T10:30:00Z"), allDay: false
+        )
+        let (model, source) = await loaded([meeting])
+
+        source.gate = true
+        let task = Task { await model.makeAllDay(meeting, onDay: self.day(13), span: .futureOccurrences) }
+        await source.waitForPending(1)
+
+        #expect(model.columns[2].placements.isEmpty)
+        #expect(model.allDaySpans.map(\.firstColumn) == [5])
+        #expect(model.allDaySpans.map(\.columnSpan) == [1])
+        #expect(source.updates.first?.draft.start == day(13))
+        #expect(source.updates.first?.draft.end == day(13))
+        #expect(source.updates.first?.draft.isAllDay == true)
+        #expect(source.updates.first?.span == .futureOccurrences)
+
+        source.release(at: 0)
+        await task.value
+    }
+
+    @Test func droppingATimedReminderOnTheAllDayRowDropsItsTime() async {
+        let call = make("電話", kind: .reminder, start: iso("2026-11-10T09:00:00Z"), allDay: false)
+        let (model, source) = await loaded([call])
+
+        await model.makeAllDay(call, onDay: day(10), span: .thisOccurrence)
+
+        #expect(source.updates.first?.draft.start == day(10))
+        #expect(source.updates.first?.draft.end == nil)
+        #expect(source.updates.first?.draft.isAllDay == true)
+    }
+
+    @Test func nothingHappensForVirtualItemsOrAZeroDayMove() async {
+        let virtual = make("薬", kind: .reminder, start: day(12), allDay: true, isVirtual: true)
+        let due = make("支払い", kind: .reminder, start: day(10), allDay: true)
+        let (model, source) = await loaded([due])
+
+        await model.moveAllDay(virtual, byDays: 1, span: .thisOccurrence)
+        await model.makeTimed(virtual, onDay: day(12), startMinute: 600, span: .thisOccurrence)
+        await model.makeAllDay(virtual, onDay: day(12), span: .thisOccurrence)
+        await model.moveAllDay(due, byDays: 0, span: .thisOccurrence)
+
+        #expect(source.updates.isEmpty)
+    }
+
+    @Test func aFailedAllDayMoveShowsTheErrorAndPutsTheItemBack() async {
+        let source = FakeSource()
+        source.updateError = TestError()
+        let due = make("支払い", kind: .reminder, start: day(10), allDay: true)
+        let (model, _) = await loaded([due], source: source)
+
+        await model.moveAllDay(due, byDays: 3, span: .thisOccurrence)
+
+        #expect(model.errorMessage != nil)
+        #expect(model.allDaySpans.map(\.firstColumn) == [2])
+    }
+}
+
 @Suite struct MoveDraftTests {
     @Test func keepsDurationAndAttributes() {
         let start = iso("2026-11-10T09:00:00Z")

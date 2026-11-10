@@ -50,14 +50,29 @@ public struct ItemDraft: Equatable {
 extension ItemDraft {
     /// 項目を同じ長さのまま新しい開始へ動かす下書き。他の属性は元のまま。
     /// 保存先は変えないので `calendarID` は nil。繰り返しは元の規則を渡し、Repository 側で「変更なし」と判定させる。
-    public init(moving item: TimelineItem, to start: Date) {
+    public init(moving item: TimelineItem, to start: Date, isAllDay: Bool = false) {
         let duration = item.start.flatMap { oldStart in item.end.map { $0.timeIntervalSince(oldStart) } } ?? 0
+        self.init(item, start: start, end: start.addingTimeInterval(max(0, duration)), isAllDay: isAllDay)
+    }
+
+    /// 終日の項目を時刻付きにする下書き。予定は 1 時間（終日の長さは時間軸に持ち込めないため）、リマインダーは期日だけ。
+    public init(scheduling item: TimelineItem, at start: Date) {
+        self.init(item, start: start, end: start.addingTimeInterval(3600), isAllDay: false)
+    }
+
+    /// 時刻付きの項目を、その日の終日にする下書き。`day` はその日の 0:00。
+    public init(makingAllDay item: TimelineItem, on day: Date) {
+        self.init(item, start: day, end: day, isAllDay: true)
+    }
+
+    /// 日時だけを差し替える。`end` は予定のときだけ使う。
+    private init(_ item: TimelineItem, start: Date, end: Date, isAllDay: Bool) {
         self.init(
             kind: item.kind,
             title: item.title,
             start: start,
-            end: item.kind == .event ? start.addingTimeInterval(max(0, duration)) : nil,
-            isAllDay: false,
+            end: item.kind == .event ? end : nil,
+            isAllDay: isAllDay,
             recurrence: item.recurrence,
             notes: item.notes,
             priority: item.priority,
