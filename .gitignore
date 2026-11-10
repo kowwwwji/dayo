@@ -1,0 +1,13 @@
+# xcodegen で project.yml から生成する
+*.xcodeproj
+*.xcworkspace
+
+# ビルド成果物・個人設定
+.build/
+DerivedData/
+xcuserdata/
+.swiftpm/
+.DS_Store
+
+# xcodegen が project.yml の info から生成する
+App/Info.plist

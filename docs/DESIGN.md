@@ -60,7 +60,8 @@
 enum ItemKind { case event, reminder }
 
 struct TimelineItem: Identifiable {
-    let id: String              // calendarItemIdentifier
+    let id: String              // 画面用の一意キー。繰り返し予定は回ごとに異なる
+    let calendarItemIdentifier: String  // EventKit から引き直すキー（繰り返しの全回で共通）
     let kind: ItemKind
     var title: String
     var start: Date?            // event: startDate / reminder: dueDate
@@ -68,6 +69,7 @@ struct TimelineItem: Identifiable {
     var isAllDay: Bool
     var isCompleted: Bool       // reminderのみ
     var sourceName: String      // リスト名 or カレンダー名
+    var accountName: String     // iCloud / Google などアカウント名（同名カレンダーの区別）
     var color: CGColor
     var recurrence: EKRecurrenceRule?
     var isShared: Bool          // 共有リストか
@@ -82,7 +84,7 @@ struct TimelineItem: Identifiable {
 | 日付なし | なし | あり（「期日なし」セクションに表示） |
 | 繰り返し | recurrenceRules | recurrenceRules |
 
-注意点：繰り返し予定は期間指定で展開された各回が返るが、繰り返しリマインダーは「次の1回」だけが存在する。週表示で将来分も見せるなら、RRULEから仮想的に展開した表示用アイテム（編集不可、薄色）を生成する。
+注意点：繰り返し予定は期間指定で展開された各回が返り、全回が同じ `calendarItemIdentifier` を持つため `id` は開始時刻を付けて区別する。一方、繰り返しリマインダーは「次の1回」だけが存在する。週表示で将来分も見せるなら、RRULEから仮想的に展開した表示用アイテム（編集不可、薄色）を生成する。
 
 ## 画面構成
 

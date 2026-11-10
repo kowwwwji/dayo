@@ -1,0 +1,42 @@
+name: Dayo
+options:
+  bundleIdPrefix: com.kowwwwji
+  deploymentTarget:
+    macOS: "14.0"
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+packages:
+  DayoCore:
+    path: Packages/DayoCore
+
+targets:
+  Dayo:
+    type: application
+    supportedDestinations: [macOS, iOS]
+    sources:
+      - App
+    dependencies:
+      - package: DayoCore
+    info:
+      path: App/Info.plist
+      properties:
+        NSCalendarsFullAccessUsageDescription: 予定をタイムラインに表示・登録するためにカレンダーへのアクセスが必要です。
+        NSRemindersFullAccessUsageDescription: Todo をタイムラインに表示・登録するためにリマインダーへのアクセスが必要です。
+        UILaunchScreen: {}
+    settings:
+      base:
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        # Mac は App Sandbox 下で EventKit を使うため entitlements が必須。署名 ID が無くてもアドホックで動かす。
+        CODE_SIGN_ENTITLEMENTS[sdk=macosx*]: App/Dayo.entitlements
+        CODE_SIGN_IDENTITY[sdk=macosx*]: "-"
+        # iOS 実機は DEVELOPMENT_TEAM を設定するまで不可（シミュレータのみ）
+
+schemes:
+  Dayo:
+    build:
+      targets:
+        Dayo: all
+    run:
+      config: Debug
