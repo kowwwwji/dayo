@@ -2,55 +2,15 @@ import Combine
 import DayoCore
 import SwiftUI
 
-/// 列が複数の表示（3 日・週）でグリッドの上に固定する見出し。曜日と日付の行、その下に終日の帯。
-/// 左右の余白をグリッドと同じにして、列の位置を揃える。
-/// 終日の帯は空でも 1 段ぶん出しておく。ダブルクリックでの登録と、時間軸からのドラッグの落とし先になるため。
-struct WeekHeaderView: View {
+/// 曜日と日付の行。今日は赤丸で示す。日表示では 1 日分、3 日・週表示では列の数だけ並べる。
+/// 左右の余白をグリッドと同じにして、各日を列の中央に置く。
+struct DayLabelsRow: View {
     let days: [Date]
-    let spans: [AllDaySpan]
-    /// キー操作で選択中の項目
-    var selection: TimelineSelection?
-    let editing: ItemEditing
-    let board: TimelineDragBoard
-    let onToggle: (TimelineItem) -> Void
-    /// 終日の項目を日数ぶん動かした
-    let onMoveDays: (TimelineItem, Int) -> Void
-    /// 終日の項目を時間軸へ落とした。日と開始分
-    let onMakeTimed: (TimelineItem, Date, Int) -> Void
 
-    private let laneHeight: CGFloat = 26
-    /// 終日の帯をそのまま見せる段数。超えた分は内部スクロール。
-    private let visibleLanes = 4
     @State private var now = Date.now
-    /// ダブルクリックで終日の新規登録を開いた日。エディタを閉じるまで、そこに仮のチップを置く
-    @State private var newDay: Date?
     private let clock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
-    /// 新規登録のエディタを開く場所のキー。
-    private static let newItemAnchor = "allDay-new"
-
-    private var spanLaneCount: Int { (spans.map(\.lane).max() ?? -1) + 1 }
-    private var showsNewChip: Bool { newDay != nil && editing.isOpenForNew(at: Self.newItemAnchor) }
-    private var laneCount: Int { max(1, spanLaneCount + (showsNewChip ? 1 : 0)) }
-
     var body: some View {
-        VStack(spacing: 4) {
-            dayLabels
-            allDayRow
-        }
-        .padding(.vertical, 6)
-        // 日の列が並ぶ範囲を届ける。時間軸からここへ落とした項目を終日にする
-        .background {
-            Color.clear
-                .onFrameChange { board.allDayFrame = $0 }
-                .padding(.leading, DayGridView.labelWidth)
-                .padding(.trailing, DayGridView.trailingInset)
-        }
-        .onChange(of: days) { _, _ in newDay = nil }
-        .onReceive(clock) { now = $0 }
-    }
-
-    private var dayLabels: some View {
         HStack(spacing: 0) {
             ForEach(days, id: \.self) { day in
                 let isToday = Calendar.autoupdatingCurrent.isDate(day, inSameDayAs: now)
@@ -73,6 +33,52 @@ struct WeekHeaderView: View {
         }
         .padding(.leading, DayGridView.labelWidth)
         .padding(.trailing, DayGridView.trailingInset)
+        .onReceive(clock) { now = $0 }
+    }
+}
+
+/// 列が複数の表示（3 日・週）でグリッドの上に固定する見出し。曜日と日付の行、その下に終日の帯。
+/// 左右の余白をグリッドと同じにして、列の位置を揃える。
+/// 終日の帯は空でも 1 段ぶん出しておく。ダブルクリックでの登録と、時間軸からのドラッグの落とし先になるため。
+struct WeekHeaderView: View {
+    let days: [Date]
+    let spans: [AllDaySpan]
+    /// キー操作で選択中の項目
+    var selection: TimelineSelection?
+    let editing: ItemEditing
+    let board: TimelineDragBoard
+    let onToggle: (TimelineItem) -> Void
+    /// 終日の項目を日数ぶん動かした
+    let onMoveDays: (TimelineItem, Int) -> Void
+    /// 終日の項目を時間軸へ落とした。日と開始分
+    let onMakeTimed: (TimelineItem, Date, Int) -> Void
+
+    private let laneHeight: CGFloat = 26
+    /// 終日の帯をそのまま見せる段数。超えた分は内部スクロール。
+    private let visibleLanes = 4
+    /// ダブルクリックで終日の新規登録を開いた日。エディタを閉じるまで、そこに仮のチップを置く
+    @State private var newDay: Date?
+    /// 新規登録のエディタを開く場所のキー。
+    private static let newItemAnchor = "allDay-new"
+
+    private var spanLaneCount: Int { (spans.map(\.lane).max() ?? -1) + 1 }
+    private var showsNewChip: Bool { newDay != nil && editing.isOpenForNew(at: Self.newItemAnchor) }
+    private var laneCount: Int { max(1, spanLaneCount + (showsNewChip ? 1 : 0)) }
+
+    var body: some View {
+        VStack(spacing: 4) {
+            DayLabelsRow(days: days)
+            allDayRow
+        }
+        .padding(.vertical, 6)
+        // 日の列が並ぶ範囲を届ける。時間軸からここへ落とした項目を終日にする
+        .background {
+            Color.clear
+                .onFrameChange { board.allDayFrame = $0 }
+                .padding(.leading, DayGridView.labelWidth)
+                .padding(.trailing, DayGridView.trailingInset)
+        }
+        .onChange(of: days) { _, _ in newDay = nil }
     }
 
     /// 選択中の帯。終日欄にあるものだけ。
