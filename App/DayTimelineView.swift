@@ -111,9 +111,12 @@ struct DayTimelineView: View {
     }
 
     /// 選択中の項目の削除を確認する。同期先からも消えるので必ず聞く。繰り返しの予定は、どの回かを聞くことが確認を兼ねる。
+    /// 削除のあと選択は隣へ移るので、続けて押しても何を消すのか分かるよう、どちらの確認にもタイトルを出す。
     private func confirmDelete(_ item: TimelineItem) {
         if item.kind == .event, item.hasRecurrence {
-            pendingChange = PendingChange(message: "どの回を削除しますか？") { await deleteSelection(item, span: $0) }
+            pendingChange = PendingChange(message: "「\(item.title)」のどの回を削除しますか？") {
+                await deleteSelection(item, span: $0)
+            }
         } else {
             pendingDelete = item
         }
