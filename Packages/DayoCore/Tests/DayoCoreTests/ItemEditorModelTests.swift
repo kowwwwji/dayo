@@ -258,13 +258,27 @@ private func item(
         #expect(changed == 0)
     }
 
-    @Test func deleteSendsSpan() async {
+    /// 削除は自分では行わず、タイムラインへ任せる（取り消せるよう、実際の削除を遅らせるため）。
+    @Test func deleteHandsTheItemAndSpanToTheHandler() async {
+        let source = EditingSource()
+        let event = item(kind: .event, start: tuesday10, end: date(2026, 11, 10, 11))
+        let model = makeModel(event, source: source)
+        var handed: [(item: TimelineItem, span: EditSpan)] = []
+        model.onDelete = { handed.append(($0, $1)) }
+
+        #expect(await model.delete(span: .futureOccurrences))
+
+        #expect(handed.map(\.item) == [event])
+        #expect(handed.map(\.span) == [.futureOccurrences])
+        #expect(source.deletes.isEmpty)
+    }
+
+    @Test func deleteDoesNothingWithoutAHandler() async {
         let source = EditingSource()
         let model = makeModel(item(kind: .event, start: tuesday10, end: date(2026, 11, 10, 11)), source: source)
 
-        #expect(await model.delete(span: .thisOccurrence))
-        #expect(source.deletes.count == 1)
-        #expect(source.deletes[0].span == .thisOccurrence)
+        #expect(await model.delete() == false)
+        #expect(source.deletes.isEmpty)
     }
 
     @Test func theLocationIsKeptAsItIsOnSave() {

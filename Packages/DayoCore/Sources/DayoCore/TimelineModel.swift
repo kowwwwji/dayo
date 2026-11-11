@@ -9,6 +9,26 @@ public enum TimelineMode: String, CaseIterable, Sendable {
     case week
 }
 
+/// 画面から消したあと、実際に削除するまで保留にしている項目。その間は取り消せる。
+public struct PendingDeletion: Equatable {
+    public let item: TimelineItem
+    public let span: EditSpan
+
+    /// 保留中に画面へ出さない項目か。繰り返しの予定の「以降すべて」はその回から後ろ、
+    /// リマインダーは 1 つのオブジェクトなので将来回も含めて全部。
+    func hides(_ other: TimelineItem) -> Bool {
+        if other.id == item.id { return true }
+        guard other.calendarItemIdentifier == item.calendarItemIdentifier else { return false }
+        switch item.kind {
+        case .reminder:
+            return true
+        case .event:
+            guard span == .futureOccurrences, let start = item.start, let otherStart = other.start else { return false }
+            return otherStart >= start
+        }
+    }
+}
+
 /// タイムライン画面の状態。権限・表示範囲・読み込み・完了操作・変更監視を持つ。
 /// 日表示・3 日表示・週表示は列の数が違うだけで、同じ状態から導く。
 @MainActor
@@ -46,6 +66,26 @@ public final class TimelineModel {
     /// キー操作での移動を保存している間。保存前の内容を元に次の移動を重ねないよう、その間の移動は受けない。
     private var isMovingSelection = false
 
+    /// 取り消せる操作。新しいものが末尾。
+    private enum Change {
+        /// 日時を変えた。`moved` は変えた後、`original` は変える前の項目。
+        case dates(moved: TimelineItem, original: TimelineItem, span: EditSpan)
+        /// 完了チェックを切り替えた。`item` は切り替えた後の項目。
+        case completion(item: TimelineItem)
+        /// 削除して保留にした。`position` は消す前にその項目へ付いていた選択。
+        case deletion(itemID: String, position: TimelineCursor.Position?)
+    }
+    private var undoStack: [Change] = []
+    private static let undoLimit = 20
+    /// 取り消せる操作があるか。
+    public var canUndo: Bool { !undoStack.isEmpty }
+
+    /// 削除して保留にしている項目。画面の「削除しました」の通知に使う。
+    public private(set) var pendingDeletion: PendingDeletion?
+    /// 削除を保留にしておく長さ。この間は取り消せる。
+    private let deleteDelay: Duration
+    private var deletionTimer: Task<Void, Never>?
+
     private let source: CalendarSource
     private let calendar: Calendar
     private let now: () -> Date
@@ -61,10 +101,12 @@ public final class TimelineModel {
         calendar: Calendar = .autoupdatingCurrent,
         mode: TimelineMode = .day,
         refreshWait: Duration = .seconds(10),
+        deleteDelay: Duration = .seconds(10),
         now: @escaping () -> Date = { .now }
     ) {
         self.source = source
         self.refreshWait = refreshWait
+        self.deleteDelay = deleteDelay
         self.calendar = calendar
         self.mode = mode
         self.now = now
@@ -170,6 +212,7 @@ public final class TimelineModel {
                 : []
             let virtual = futureOccurrences(of: snapshot.recurring, in: range)
             timeline = DayTimeline(items: snapshot.items + virtual, overdue: snapshot.overdue + overdueInRange)
+            hidePendingDeletion()
             layOut()
             hasLoaded = true
             loadedRange = range
@@ -188,7 +231,70 @@ public final class TimelineModel {
             errorMessage = error.localizedDescription
             return
         }
+        var toggled = item
+        toggled.isCompleted.toggle()
+        record(.completion(item: toggled))
         await load()
+    }
+
+    // MARK: - 取り消し
+
+    /// 直近の操作（日時の変更、完了チェック、保留中の削除）を取り消す。表示範囲は動かさず、戻した項目が見えていれば選ぶ。
+    /// 失敗した取り消しは捨てる（項目が無くなっているなど、やり直しても通らないため）。
+    public func undo() async {
+        guard !isMovingSelection, let change = undoStack.popLast() else { return }
+        isMovingSelection = true
+        defer { isMovingSelection = false }
+        switch change {
+        case .dates(let moved, let original, let span):
+            // 取得元は開始日時で項目を引き直すので、動かした後の項目を渡す。画面にあればいまの内容を使い、
+            // 動かしたあとの編集（タイトルなど）を巻き戻さない
+            let current = (timeline.allDay + timeline.timed + timeline.overdue).first {
+                $0.calendarItemIdentifier == moved.calendarItemIdentifier && $0.start == moved.start && !$0.isVirtual
+            } ?? moved
+            guard let draft = ItemDraft(restoring: original, on: current), let start = draft.start,
+                  await apply(draft, to: current, span: span, recordsUndo: false)
+            else { return }
+            let day = calendar.startOfDay(for: start)
+            let place: TimelineSelection.Place = draft.isAllDay ? .allDay : .grid(day: day)
+            let target = TimelineCursor.Position(selection: TimelineSelection(itemID: current.id, place: place), day: day)
+            if let restored = position(of: current, startingAt: start, like: target) {
+                cursorPosition = restored
+            }
+        case .completion(let item):
+            do {
+                try await source.setCompleted(!item.isCompleted, for: item)
+            } catch {
+                errorMessage = error.localizedDescription
+                return
+            }
+            await load()
+        case .deletion(let itemID, let position):
+            guard pendingDeletion?.item.id == itemID else { return }
+            deletionTimer?.cancel()
+            deletionTimer = nil
+            pendingDeletion = nil
+            await load()
+            if let restored = position.flatMap(cursor.resolve) {
+                cursorPosition = restored
+            }
+        }
+    }
+
+    private func record(_ change: Change) {
+        undoStack.append(change)
+        if undoStack.count > Self.undoLimit {
+            undoStack.removeFirst(undoStack.count - Self.undoLimit)
+        }
+    }
+
+    /// `draft` の日時にした `item`。
+    private func item(_ item: TimelineItem, rescheduledBy draft: ItemDraft) -> TimelineItem {
+        var updated = item
+        updated.start = draft.start
+        updated.end = draft.end
+        updated.isAllDay = draft.isAllDay
+        return updated
     }
 
     /// ドラッグで別の時刻・別の日へ動かした。`originDay` は掴んだ列の日、`minute` は落とした列での開始分。
@@ -281,27 +387,64 @@ public final class TimelineModel {
     }
 
     /// 選択中の項目を削除し、同じ列の次（無ければ前）の項目を選ぶ。続けて削除できるようにするため。
-    /// 読み取り専用の項目には何もしない。失敗したら選択はそのまま。
+    /// 読み取り専用の項目には何もしない。
     public func deleteSelection(span: EditSpan) async {
         guard !isMovingSelection, let position = cursorPosition, let item = selectedItem, isChangeable(item)
         else { return }
-        isMovingSelection = true
-        defer { isMovingSelection = false }
         // 同じ項目が期限切れ欄とその日の列の両方に出ていることがあるので、行き先からは外す
         let entries = cursor.entries(on: position.day)
         let index = entries.firstIndex(of: position.selection) ?? 0
         let neighbour = (entries[index...].dropFirst() + entries[..<index].reversed())
             .first { $0.itemID != item.id }
-        do {
-            try await source.delete(item, span: span)
-        } catch {
-            errorMessage = error.localizedDescription
-            return
-        }
-        await load()
+        await delete(item, span: span)
         cursorPosition = neighbour.flatMap {
             cursor.resolve(TimelineCursor.Position(selection: $0, day: position.day))
         }
+    }
+
+    /// 項目を削除する。画面からはすぐ消し、取得元への削除は `deleteDelay` だけ遅らせる。その間は `undo()` で何も失わずに戻る。
+    /// 保留にできるのは 1 件だけなので、前の保留は先に実行する。
+    public func delete(_ item: TimelineItem, span: EditSpan) async {
+        guard !isMovingSelection, isChangeable(item) else { return }
+        await flushPendingDeletion()
+        let pending = PendingDeletion(item: item, span: span)
+        pendingDeletion = pending
+        record(.deletion(itemID: item.id, position: cursorPosition.flatMap { $0.selection.itemID == item.id ? $0 : nil }))
+        hidePendingDeletion()
+        layOut()
+        // 進行中の読み込みが、消す前の内容で上書きしないようにする
+        loadGeneration += 1
+        deletionTimer = Task { [weak self, deleteDelay] in
+            try? await Task.sleep(for: deleteDelay)
+            guard !Task.isCancelled, let self, self.pendingDeletion == pending else { return }
+            // 自分自身を止めないよう、先に手放す
+            self.deletionTimer = nil
+            await self.flushPendingDeletion()
+        }
+    }
+
+    /// 保留にしている削除をいま実行する。アプリの終了時にも呼ぶ。失敗したら項目は画面へ戻る。
+    public func flushPendingDeletion() async {
+        guard let pending = pendingDeletion else { return }
+        deletionTimer?.cancel()
+        deletionTimer = nil
+        pendingDeletion = nil
+        undoStack.removeAll { if case .deletion = $0 { true } else { false } }
+        do {
+            try await source.delete(pending.item, span: pending.span)
+            await load()
+        } catch {
+            await load()
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func hidePendingDeletion() {
+        guard let pendingDeletion else { return }
+        timeline = DayTimeline(
+            items: (timeline.allDay + timeline.timed).filter { !pendingDeletion.hides($0) },
+            overdue: timeline.overdue.filter { !pendingDeletion.hides($0) }
+        )
     }
 
     /// 選択中の時刻付きの項目を、次（`direction` が正）/ 前の 15 分の区切りへ動かす。日の外へは出さない。
@@ -362,6 +505,7 @@ public final class TimelineModel {
             errorMessage = error.localizedDescription
             return
         }
+        record(.dates(moved: self.item(item, rescheduledBy: draft), original: item, span: span))
         await showAdjacent(by: direction)
         // 保存の直後は変更通知の読み込みが割り込みやすい。追い越されたら読み直してから選ぶ
         if !isLoadedForRange { await load() }
@@ -466,12 +610,11 @@ public final class TimelineModel {
     }
 
     /// 日時の変更を保存する。表示は先に変え（楽観更新）、保存後に読み直す。失敗したら元に戻してメッセージを出す。
-    private func apply(_ draft: ItemDraft, to item: TimelineItem, span: EditSpan) async {
+    /// 保存できたら true。`recordsUndo` なら取り消せるよう記録する。
+    @discardableResult
+    private func apply(_ draft: ItemDraft, to item: TimelineItem, span: EditSpan, recordsUndo: Bool = true) async -> Bool {
         let previous = timeline
-        var updated = item
-        updated.start = draft.start
-        updated.end = draft.end
-        updated.isAllDay = draft.isAllDay
+        let updated = self.item(item, rescheduledBy: draft)
         let others = (timeline.allDay + timeline.timed).filter { $0.id != item.id }
         timeline = DayTimeline(items: others + [updated], overdue: timeline.overdue)
         layOut()
@@ -480,13 +623,16 @@ public final class TimelineModel {
 
         do {
             try await source.update(item, with: draft, span: span)
+            if recordsUndo { record(.dates(moved: updated, original: item, span: span)) }
             await load()
+            return true
         } catch {
             // まず元に戻し、読み直しが失敗しても動いたままに見えないようにする。メッセージは load が消すので最後に
             timeline = previous
             layOut()
             await load()
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
