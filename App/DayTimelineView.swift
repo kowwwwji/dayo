@@ -15,8 +15,6 @@ struct DayTimelineView: View {
     @State private var board = TimelineDragBoard()
     /// 繰り返し予定の日時を変える・削除する前に、どの回に及ぶかを聞いている間の保留
     @State private var pendingChange: PendingChange?
-    /// キーでの削除を確認している間の、削除する項目
-    @State private var pendingDelete: TimelineItem?
 
     private struct PendingChange {
         var message = "どの回の日時を変えますか？"
@@ -54,7 +52,7 @@ struct DayTimelineView: View {
                 KeyHelpView { showsKeyHelp = false }
             }
         }
-        .onTimelineKey(isEnabled: model.access == .granted && editor == nil && pendingChange == nil && pendingDelete == nil,
+        .onTimelineKey(isEnabled: model.access == .granted && editor == nil && pendingChange == nil,
             perform: handle)
         #endif
         .environment(\.selectTimelineItem) { model.select($0) }
@@ -119,7 +117,26 @@ struct DayTimelineView: View {
                 await deleteSelection(item, span: $0)
             }
         } else {
-            pendingDelete = item
+            presentDeleteAlert(for: item)
+        }
+    }
+
+    /// 削除の確認。return で削除、esc で取り消し。
+    /// SwiftUI の確認ダイアログは最初のフォーカスを選べず、キーボード操作をオンにしていると
+    /// 「キャンセル」にフォーカスの輪が付いて、そちらが選ばれているように見える。AppKit のダイアログで「削除」に置く。
+    /// 文面は詳細編集の削除確認と揃える。
+    private func presentDeleteAlert(for item: TimelineItem) {
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+        let alert = NSAlert()
+        alert.messageText = "「\(item.title)」を削除しますか？"
+        alert.informativeText = "純正アプリと共有相手からも消えます。"
+        let delete = alert.addButton(withTitle: "削除")
+        let cancel = alert.addButton(withTitle: "キャンセル")
+        cancel.keyEquivalent = "\u{1b}"
+        alert.window.initialFirstResponder = delete
+        alert.beginSheetModal(for: window) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            Task { await deleteSelection(item, span: .thisOccurrence) }
         }
     }
 
@@ -225,23 +242,6 @@ struct DayTimelineView: View {
         } message: { pending in
             Text(pending.message)
         }
-        #if os(macOS)
-        // 文面は詳細編集の削除確認と揃える
-        .confirmationDialog(
-            "「\(pendingDelete?.title ?? "")」を削除しますか？",
-            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
-            titleVisibility: .visible,
-            presenting: pendingDelete
-        ) { item in
-            // return で削除するので、既定のボタンとして見えるようにする。破壊的操作の役割を付けると
-            // macOS は既定のボタンとして描かず、キャンセルが選ばれているように見えてしまう
-            Button("削除") { Task { await deleteSelection(item, span: .thisOccurrence) } }
-                .keyboardShortcut(.defaultAction)
-            Button("キャンセル", role: .cancel) {}
-        } message: { _ in
-            Text("純正アプリと共有相手からも消えます。")
-        }
-        #endif
         .overlay {
             // 列が複数の表示は空でも曜日と時間軸を見せる
             if model.mode == .day, model.hasLoaded, model.timeline.isEmpty {
