@@ -27,19 +27,23 @@ enum TimelineModeSetting {
 struct DayNavigationControls: View {
     let model: TimelineModel
 
-    /// 「更新中」を出しているか。読み直しは一瞬で終わるので、押したことが分かるよう少しのあいだ残す
-    @State private var showsRefreshing = false
+    /// 更新の表示。変更がすぐ届いても押したことが分かるよう「更新中」は少しのあいだ残し、
+    /// 変更が届かなかったときの知らせも数秒で消す
+    private enum RefreshNotice { case refreshing, failed }
+    @State private var refreshNotice: RefreshNotice?
 
     /// 前後に動く単位。3 日表示も 1 日ずつ動く。
     private var unit: String { model.mode == .week ? "週" : "日" }
 
     var body: some View {
         HStack(spacing: 6) {
-            if showsRefreshing {
+            if let refreshNotice {
                 HStack(spacing: 4) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("更新中")
+                    if refreshNotice == .refreshing {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Text(refreshNotice == .refreshing ? "更新中" : "更新できません")
                         .font(.dayoSmall)
                         .foregroundStyle(.secondary)
                 }
@@ -62,14 +66,21 @@ struct DayNavigationControls: View {
             .accessibilityLabel("次の\(unit)")
         }
         .animation(.default, value: model.isAlignedWithToday)
-        .animation(.default, value: showsRefreshing)
-        .onChange(of: model.isRefreshing) { _, refreshing in
-            if refreshing {
-                showsRefreshing = true
-            } else {
+        .animation(.default, value: refreshNotice)
+        .onChange(of: model.refreshState) { _, state in
+            switch state {
+            case .refreshing:
+                refreshNotice = .refreshing
+            case .idle:
                 Task {
                     try? await Task.sleep(for: .seconds(1))
-                    if !model.isRefreshing { showsRefreshing = false }
+                    if model.refreshState == .idle { refreshNotice = nil }
+                }
+            case .timedOut:
+                refreshNotice = .failed
+                Task {
+                    try? await Task.sleep(for: .seconds(4))
+                    if model.refreshState == .timedOut { refreshNotice = nil }
                 }
             }
         }

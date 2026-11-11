@@ -58,7 +58,13 @@ private final class FakeSource: CalendarSource {
 
     func refresh() async { refreshCount += 1 }
 
-    var changes: AsyncStream<Void> { AsyncStream { _ in } }
+    private var changeContinuation: AsyncStream<Void>.Continuation?
+    var changes: AsyncStream<Void> {
+        AsyncStream { self.changeContinuation = $0 }
+    }
+
+    /// 取得元に変更があったことを流す。
+    func emitChange() { changeContinuation?.yield() }
 
     func release(at index: Int) {
         pending.remove(at: index).resume()
@@ -103,7 +109,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
 
     @Test func refreshAsksTheSourceToSyncAndReloads() async {
         let source = FakeSource()
-        let model = makeModel(source) { self.d0 }
+        let model = TimelineModel(source: source, calendar: utc, refreshWait: .zero) { self.d0 }
         await model.activate()
         let added = item("added", start: iso("2026-11-10T09:00:00Z"))
         source.snapshots[d0] = TimelineSnapshot(items: [added], overdue: [])
@@ -114,20 +120,38 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.timeline.timed == [added])
     }
 
-    @Test func isRefreshingOnlyWhileARefreshRuns() async {
+    @Test func refreshStaysInProgressUntilAChangeArrives() async {
         let source = FakeSource()
-        let model = makeModel(source) { self.d0 }
+        let model = TimelineModel(source: source, calendar: utc, refreshWait: .seconds(60)) { self.d0 }
         await model.activate()
-        #expect(!model.isRefreshing)
+        #expect(model.refreshState == .idle)
 
-        source.gate = true
         let refresh = Task { await model.refresh() }
-        await source.waitForPending(1)
-        #expect(model.isRefreshing)
+        while source.refreshCount == 0 || source.requests.count < 2 { await Task.yield() }
+        #expect(model.refreshState == .refreshing)
 
-        source.release(at: 0)
+        let added = item("added", start: iso("2026-11-10T09:00:00Z"))
+        source.snapshots[d0] = TimelineSnapshot(items: [added], overdue: [])
+        source.emitChange()
         await refresh.value
-        #expect(!model.isRefreshing)
+
+        #expect(model.refreshState == .idle)
+        #expect(model.timeline.timed == [added])
+    }
+
+    @Test func refreshTimesOutWhenNoChangeArrives() async {
+        let source = FakeSource()
+        let model = TimelineModel(source: source, calendar: utc, refreshWait: .milliseconds(20)) { self.d0 }
+        await model.activate()
+
+        await model.refresh()
+        #expect(model.refreshState == .timedOut)
+
+        // 次の更新を始めたら、前回の結果は消える
+        let next = Task { await model.refresh() }
+        while source.refreshCount < 2 { await Task.yield() }
+        #expect(model.refreshState == .refreshing)
+        await next.value
     }
 
     @Test func activateLoadsTodayWithOverdue() async {
