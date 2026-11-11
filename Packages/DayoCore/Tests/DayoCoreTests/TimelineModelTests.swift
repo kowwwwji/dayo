@@ -9,9 +9,11 @@ private final class FakeSource: CalendarSource {
     var snapshots: [Date: TimelineSnapshot] = [:]
     var setCompletedError: Error?
     var updateError: Error?
+    var deleteError: Error?
     private(set) var requests: [(range: DateInterval, includingOverdue: Bool)] = []
     private(set) var completions: [(id: String, completed: Bool)] = []
     private(set) var updates: [(item: TimelineItem, draft: ItemDraft, span: EditSpan)] = []
+    private(set) var deletions: [(item: TimelineItem, span: EditSpan)] = []
     var gate = false
     private var pending: [CheckedContinuation<Void, Never>] = []
     var pendingCount: Int { pending.count }
@@ -37,7 +39,20 @@ private final class FakeSource: CalendarSource {
         if let updateError { throw updateError }
         updates.append((item, draft, span))
     }
-    func delete(_ item: TimelineItem, span: EditSpan) async throws {}
+
+    /// 削除した項目は、以後の取得結果からも消える。
+    func delete(_ item: TimelineItem, span: EditSpan) async throws {
+        if let deleteError { throw deleteError }
+        deletions.append((item, span))
+        snapshots = snapshots.mapValues { snapshot in
+            TimelineSnapshot(
+                items: snapshot.items.filter { $0.id != item.id },
+                overdue: snapshot.overdue.filter { $0.id != item.id },
+                recurring: snapshot.recurring.filter { $0.id != item.id }
+            )
+        }
+    }
+
     func destinations() async throws -> [Destination] { [] }
 
     var changes: AsyncStream<Void> { AsyncStream { _ in } }
@@ -1376,6 +1391,142 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         await model.moveSelectionByDay(1, span: .thisOccurrence)
 
         #expect(source.updates.isEmpty)
+    }
+
+    // MARK: - 選択中の項目を削除する
+
+    @Test func deletingSendsTheSelectedItemWithItsSpanAndReloads() async {
+        let (model, source) = await loaded([make("a", "2026-11-10T09:00:00Z")])
+        model.selectNext()
+        let requests = source.requests.count
+
+        await model.deleteSelection(span: .futureOccurrences)
+
+        #expect(source.deletions.map(\.item.id) == ["a"])
+        #expect(source.deletions.map(\.span) == [.futureOccurrences])
+        #expect(source.requests.count == requests + 1)
+        #expect(model.columns.flatMap(\.placements).isEmpty)
+        #expect(model.errorMessage == nil)
+    }
+
+    @Test func afterDeletingTheNextItemInTheColumnIsSelected() async {
+        let (model, _) = await loaded([
+            make("a", "2026-11-10T09:00:00Z"),
+            make("b", "2026-11-10T12:00:00Z"),
+            make("c", "2026-11-10T15:00:00Z"),
+            make("wed", "2026-11-11T09:00:00Z"),
+        ])
+        model.selectNext()
+        model.selectNext()
+
+        await model.deleteSelection(span: .thisOccurrence)
+
+        #expect(model.selection == grid("c", 10))
+    }
+
+    @Test func afterDeletingTheLastItemOfTheColumnThePreviousOneIsSelected() async {
+        let (model, _) = await loaded([
+            make("a", "2026-11-10T09:00:00Z"),
+            make("b", "2026-11-10T12:00:00Z"),
+            make("wed", "2026-11-11T09:00:00Z"),
+        ])
+        model.selectPrevious()
+
+        await model.deleteSelection(span: .thisOccurrence)
+
+        #expect(model.selection == grid("a", 10))
+    }
+
+    @Test func deletingTheOnlyItemOfTheColumnLeavesNothingSelected() async {
+        let (model, _) = await loaded([
+            make("a", "2026-11-10T09:00:00Z"),
+            make("wed", "2026-11-11T09:00:00Z"),
+        ])
+        model.selectNext()
+
+        await model.deleteSelection(span: .thisOccurrence)
+
+        #expect(model.selection == nil)
+    }
+
+    @Test func deletingAnAllDayItemSelectsTheNextEntryOfTheColumn() async {
+        let (model, source) = await loaded([
+            make("holiday", "2026-11-10T00:00:00Z", hours: 24, allDay: true),
+            make("a", "2026-11-10T09:00:00Z"),
+        ], mode: .day)
+        model.selectNext()
+        #expect(model.selection == TimelineSelection(itemID: "holiday", place: .allDay))
+
+        await model.deleteSelection(span: .thisOccurrence)
+
+        #expect(source.deletions.map(\.item.id) == ["holiday"])
+        #expect(model.selection == grid("a", 10))
+    }
+
+    /// 週の中の過ぎた日の未完了は、期限切れ欄とその日の列の両方に出る。消したあとに同じ項目の別の場所を選ばない。
+    @Test func deletingAnOverdueReminderSkipsItsOtherPlaceInTheSameColumn() async {
+        let (model, _) = await loaded([
+            make("mon", kind: .reminder, "2026-11-09T09:00:00Z"),
+            make("later", "2026-11-09T12:00:00Z"),
+        ])
+        model.selectNext()
+        await model.selectLeft()
+        model.selectPrevious()
+        #expect(model.selection == TimelineSelection(itemID: "mon", place: .overdue))
+
+        await model.deleteSelection(span: .thisOccurrence)
+
+        #expect(model.selection == grid("later", 9))
+    }
+
+    @Test func nothingIsDeletedForReadOnlyItemsOrWithoutASelection() async {
+        let (model, source) = await loaded([make("birthday", "2026-11-10T09:00:00Z", editable: false)])
+        let requests = source.requests.count
+
+        await model.deleteSelection(span: .thisOccurrence)
+        model.selectNext()
+        await model.deleteSelection(span: .thisOccurrence)
+
+        #expect(source.deletions.isEmpty)
+        #expect(source.requests.count == requests)
+        #expect(model.selection == grid("birthday", 10))
+    }
+
+    @Test func aFailedDeleteShowsTheErrorAndKeepsTheSelection() async {
+        let source = FakeSource()
+        source.deleteError = TestError()
+        let (model, _) = await loaded([
+            make("a", "2026-11-10T09:00:00Z"),
+            make("b", "2026-11-10T12:00:00Z"),
+        ], source: source)
+        model.selectNext()
+        let requests = source.requests.count
+
+        await model.deleteSelection(span: .thisOccurrence)
+
+        #expect(model.errorMessage != nil)
+        #expect(model.selection == grid("a", 10))
+        #expect(source.requests.count == requests)
+    }
+
+    @Test func aSecondDeleteIsIgnoredWhileOneIsBeingSaved() async {
+        let (model, source) = await loaded([
+            make("a", "2026-11-10T09:00:00Z"),
+            make("b", "2026-11-10T12:00:00Z"),
+        ])
+        model.selectNext()
+        source.gate = true
+
+        let task = Task { await model.deleteSelection(span: .thisOccurrence) }
+        await source.waitForPending(1)
+        await model.deleteSelection(span: .thisOccurrence)
+        await model.moveSelectionByDay(1, span: .thisOccurrence)
+
+        #expect(source.deletions.count == 1)
+        #expect(source.updates.isEmpty)
+        source.release(at: 0)
+        await task.value
+        #expect(model.selection == grid("b", 10))
     }
 }
 

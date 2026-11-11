@@ -229,6 +229,30 @@ public final class TimelineModel {
         await toggleCompleted(item)
     }
 
+    /// 選択中の項目を削除し、同じ列の次（無ければ前）の項目を選ぶ。続けて削除できるようにするため。
+    /// 読み取り専用の項目には何もしない。失敗したら選択はそのまま。
+    public func deleteSelection(span: EditSpan) async {
+        guard !isMovingSelection, let position = cursorPosition, let item = selectedItem, isChangeable(item)
+        else { return }
+        isMovingSelection = true
+        defer { isMovingSelection = false }
+        // 同じ項目が期限切れ欄とその日の列の両方に出ていることがあるので、行き先からは外す
+        let entries = cursor.entries(on: position.day)
+        let index = entries.firstIndex(of: position.selection) ?? 0
+        let neighbour = (entries[index...].dropFirst() + entries[..<index].reversed())
+            .first { $0.itemID != item.id }
+        do {
+            try await source.delete(item, span: span)
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
+        await load()
+        cursorPosition = neighbour.flatMap {
+            cursor.resolve(TimelineCursor.Position(selection: $0, day: position.day))
+        }
+    }
+
     /// 選択中の時刻付きの項目を、次（`direction` が正）/ 前の 15 分の区切りへ動かす。日の外へは出さない。
     public func moveSelectionInTime(_ direction: Int, span: EditSpan) async {
         guard let position = cursorPosition, case .grid(let day) = position.selection.place,
