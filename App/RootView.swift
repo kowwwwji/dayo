@@ -28,7 +28,7 @@ struct RootView: View {
             get: { sidebarHidden ? .detailOnly : .all },
             set: { sidebarHidden = $0 == .detailOnly }
         )) {
-            // 表示（日 / 3 日 / 週）をここで切り替える
+            // 表示（日 / 3 日 / 週）と、出すカレンダーをここで切り替える
             List(selection: Binding<TimelineMode?>(
                 get: { model.mode },
                 set: { mode in
@@ -38,6 +38,8 @@ struct RootView: View {
                 Label("日表示", systemImage: "sun.max").tag(TimelineMode.day)
                 Label("3日表示", systemImage: "rectangle.split.3x1").tag(TimelineMode.threeDays)
                 Label("週表示", systemImage: "calendar").tag(TimelineMode.week)
+                // 見なくてよいカレンダーを隠して、列の幅を空ける
+                SidebarCalendars(model: model)
             }
             .navigationSplitViewColumnWidth(min: 160, ideal: 200)
         } detail: {

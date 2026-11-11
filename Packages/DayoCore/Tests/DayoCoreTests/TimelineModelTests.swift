@@ -56,6 +56,9 @@ private final class FakeSource: CalendarSource {
 
     func destinations() async throws -> [Destination] { [] }
 
+    var calendarList: [CalendarInfo] = []
+    func calendars() async throws -> [CalendarInfo] { calendarList }
+
     func refresh() async { refreshCount += 1 }
 
     private var changeContinuation: AsyncStream<Void>.Continuation?
@@ -2560,5 +2563,129 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(source.updates.map(\.draft.end) == [iso("2026-11-10T10:15:00Z"), iso("2026-11-10T10:00:00Z")])
         #expect(source.updates[1].item.end == iso("2026-11-10T10:15:00Z"))
         #expect(source.updates[1].draft.start == iso("2026-11-10T09:00:00Z"))
+    }
+}
+
+@MainActor
+@Suite struct TimelineModelCalendarTests {
+    /// 2026-11-10 は火曜。週（日曜始まり）は 11-08 〜 11-14。
+    let today = iso("2026-11-10T00:00:00Z")
+    let weekStart = iso("2026-11-08T00:00:00Z")
+
+    private func make(
+        _ id: String, in calendar: String, kind: ItemKind = .event, _ start: String, allDay: Bool = false,
+        recurrence: RecurrenceSpec? = nil
+    ) -> TimelineItem {
+        let start = iso(start)
+        return TimelineItem(
+            id: id, calendarItemIdentifier: id, kind: kind, title: id, start: start,
+            end: kind == .event ? start.addingTimeInterval(allDay ? 86_400 : 3600) : nil,
+            isAllDay: allDay, isCompleted: false, sourceName: "", accountName: "",
+            color: CGColor(gray: 0, alpha: 1), recurrence: recurrence, calendarIdentifier: calendar
+        )
+    }
+
+    private func info(_ id: String, kind: ItemKind = .event) -> CalendarInfo {
+        CalendarInfo(id: id, name: id, kind: kind, color: CGColor(gray: 0, alpha: 1), accountName: "Google")
+    }
+
+    /// 仕事と Busy のカレンダー、リマインダーのリスト「家」に、列・終日・期限切れ・将来回がそれぞれある週。
+    private func source() -> FakeSource {
+        let source = FakeSource()
+        let daily = make(
+            "daily", in: "home", kind: .reminder, "2026-11-10T07:00:00Z", recurrence: RecurrenceSpec(frequency: .daily)
+        )
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [
+                make("work", in: "work", "2026-11-10T09:00:00Z"),
+                make("busy", in: "busy", "2026-11-10T09:00:00Z"),
+                make("busy-day", in: "busy", "2026-11-11T00:00:00Z", allDay: true),
+                daily,
+            ],
+            overdue: [make("late", in: "home", kind: .reminder, "2026-11-01T09:00:00Z")],
+            recurring: [daily]
+        )
+        source.calendarList = [info("work"), info("busy"), info("home", kind: .reminder)]
+        return source
+    }
+
+    private func ids(_ model: TimelineModel) -> [String] {
+        (model.columns.flatMap(\.placements).map(\.item) + model.allDaySpans.map(\.item) + model.timeline.overdue)
+            .map { $0.isVirtual ? "virtual" : $0.id }
+            .sorted()
+    }
+
+    @Test func nothingIsHiddenUnlessAsked() async {
+        let model = TimelineModel(source: source(), calendar: utc, mode: .week) { self.today }
+        await model.activate()
+
+        #expect(model.hiddenCalendarIDs.isEmpty)
+        #expect(Set(ids(model)) == ["busy", "busy-day", "daily", "late", "virtual", "work"])
+    }
+
+    @Test func itemsOfCalendarsHiddenFromTheStartAreNotShownAnywhere() async {
+        let model = TimelineModel(
+            source: source(), calendar: utc, mode: .week, hiddenCalendarIDs: ["busy", "home"]
+        ) { self.today }
+
+        await model.activate()
+
+        #expect(ids(model) == ["work"])
+        #expect(model.hiddenCalendarIDs == ["busy", "home"])
+    }
+
+    @Test func hidingACalendarRemovesItsItemsAndShowingItBringsThemBack() async {
+        let model = TimelineModel(source: source(), calendar: utc, mode: .week) { self.today }
+        await model.activate()
+
+        await model.setCalendar("busy", hidden: true)
+        #expect(Set(ids(model)) == ["daily", "late", "virtual", "work"])
+        #expect(model.hiddenCalendarIDs == ["busy"])
+
+        await model.setCalendar("home", hidden: true)
+        #expect(ids(model) == ["work"])
+
+        await model.setCalendar("busy", hidden: false)
+        #expect(ids(model) == ["busy", "busy-day", "work"])
+        #expect(model.hiddenCalendarIDs == ["home"])
+    }
+
+    @Test func theItemsDisappearBeforeTheReloadFinishes() async {
+        let source = source()
+        let model = TimelineModel(source: source, calendar: utc, mode: .week) { self.today }
+        await model.activate()
+        source.gate = true
+
+        let task = Task { await model.setCalendar("busy", hidden: true) }
+        await source.waitForPending(1)
+
+        #expect(Set(ids(model)) == ["daily", "late", "virtual", "work"])
+        source.release(at: 0)
+        await task.value
+    }
+
+    @Test func hidingTheCalendarOfTheSelectedItemClearsTheSelection() async {
+        let model = TimelineModel(source: source(), calendar: utc, mode: .week) { self.today }
+        await model.activate()
+        model.select(TimelineSelection(itemID: "busy", place: .grid(day: today)))
+        #expect(model.selectedItem?.id == "busy")
+
+        await model.setCalendar("busy", hidden: true)
+
+        #expect(model.selection == nil)
+    }
+
+    @Test func theCalendarListIsLoadedOnActivationAndWhenTheSourceChanges() async {
+        let source = source()
+        let model = TimelineModel(source: source, calendar: utc, mode: .week) { self.today }
+        #expect(model.calendars.isEmpty)
+
+        await model.activate()
+        #expect(model.calendars.map(\.id) == ["work", "busy", "home"])
+
+        source.calendarList.append(info("new"))
+        source.emitChange()
+        while model.calendars.count < 4 { await Task.yield() }
+        #expect(model.calendars.map(\.id) == ["work", "busy", "home", "new"])
     }
 }

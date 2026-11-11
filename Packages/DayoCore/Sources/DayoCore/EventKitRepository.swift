@@ -125,6 +125,21 @@ public final class EventKitRepository: CalendarSource {
         return writable(.reminder, as: .reminder) + writable(.event, as: .event)
     }
 
+    public func calendars() async throws -> [CalendarInfo] {
+        func all(_ entity: EKEntityType, as kind: ItemKind) -> [CalendarInfo] {
+            store.calendars(for: entity).map {
+                CalendarInfo(
+                    id: $0.calendarIdentifier,
+                    name: $0.title,
+                    kind: kind,
+                    color: $0.cgColor ?? TimelineItem.fallbackColor,
+                    accountName: $0.source?.title ?? ""
+                )
+            }
+        }
+        return all(.event, as: .event) + all(.reminder, as: .reminder)
+    }
+
     // MARK: - 書き込みの共通部分
 
     /// 途中で失敗したら、変更しかけたオブジェクトをストアのキャッシュから戻す。

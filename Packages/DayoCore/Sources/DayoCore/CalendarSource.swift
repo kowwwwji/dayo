@@ -85,6 +85,25 @@ public struct Destination: Equatable, Identifiable {
     }
 }
 
+/// 画面に項目を出しているカレンダーまたはリスト。表示・非表示の切替に使う。
+public struct CalendarInfo: Equatable, Identifiable {
+    /// `TimelineItem.calendarIdentifier` と同じ。
+    public var id: String
+    public var name: String
+    public var kind: ItemKind
+    public var color: CGColor
+    /// アカウント名（iCloud / Google など）。一覧をアカウントごとに分けるのに使う。
+    public var accountName: String
+
+    public init(id: String, name: String, kind: ItemKind, color: CGColor, accountName: String) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.color = color
+        self.accountName = accountName
+    }
+}
+
 /// 予定・リマインダーの取得元。画面はこの protocol と TimelineItem だけを扱う。
 public protocol CalendarSource {
     /// 予定とリマインダーの権限をまとめて要求し、結果の状態を返す。
@@ -102,6 +121,8 @@ public protocol CalendarSource {
     func delete(_ item: TimelineItem, span: EditSpan) async throws
     /// 書き込めるリストとカレンダーの一覧。クイック入力の `#` `@` 補完とエディタの保存先選択に使う。
     func destinations() async throws -> [Destination]
+    /// 予定のカレンダーとリマインダーのリストの一覧。祝日や誕生日など、書き込めないものも含む。
+    func calendars() async throws -> [CalendarInfo]
     /// 同期元（Google や iCloud）の新しい内容を取り込むよう頼む。取り込みは裏で進み、届いた変更は `changes` に流れる。
     func refresh() async
     /// 取得元に変更があったときに値を流す。受け取ったら表示中の期間を再取得する。
@@ -111,4 +132,6 @@ public protocol CalendarSource {
 extension CalendarSource {
     /// 同期元を持たない取得元では何もしない。
     public func refresh() async {}
+    /// カレンダーの区別を持たない取得元では空。
+    public func calendars() async throws -> [CalendarInfo] { [] }
 }

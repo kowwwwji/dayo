@@ -12,7 +12,9 @@ struct DayoApp: App {
     #endif
 
     init() {
-        let timeline = TimelineModel(source: source, mode: TimelineModeSetting.stored)
+        let timeline = TimelineModel(
+            source: source, mode: TimelineModeSetting.stored, hiddenCalendarIDs: CalendarVisibilitySetting.stored
+        )
         let quickInput = QuickInputModel(source: source)
         // 変更通知でも反映されるが、自分の登録は待たずに読み直す
         quickInput.onCreated = { await timeline.load() }

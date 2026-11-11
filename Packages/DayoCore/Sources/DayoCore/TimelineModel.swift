@@ -80,6 +80,11 @@ public final class TimelineModel {
     /// 取り消せる操作があるか。
     public var canUndo: Bool { !undoStack.isEmpty }
 
+    /// 予定のカレンダーとリマインダーのリストの一覧。表示・非表示の切替に出す。
+    public private(set) var calendars: [CalendarInfo] = []
+    /// 画面に出さないカレンダーとリスト（`CalendarInfo.id`）。保存は App が持つ。
+    public private(set) var hiddenCalendarIDs: Set<String>
+
     /// 削除して保留にしている項目。画面の「削除しました」の通知に使う。
     public private(set) var pendingDeletion: PendingDeletion?
     /// 削除を保留にしておく長さ。この間は取り消せる。
@@ -102,9 +107,11 @@ public final class TimelineModel {
         mode: TimelineMode = .day,
         refreshWait: Duration = .seconds(10),
         deleteDelay: Duration = .seconds(10),
+        hiddenCalendarIDs: Set<String> = [],
         now: @escaping () -> Date = { .now }
     ) {
         self.source = source
+        self.hiddenCalendarIDs = hiddenCalendarIDs
         self.refreshWait = refreshWait
         self.deleteDelay = deleteDelay
         self.calendar = calendar
@@ -117,6 +124,7 @@ public final class TimelineModel {
         observation = Task { [weak self] in
             for await _ in changes {
                 guard let self, self.access == .granted else { continue }
+                await self.loadCalendars()
                 await self.load()
                 self.resumeChangeWaiters()
             }
@@ -201,8 +209,14 @@ public final class TimelineModel {
         let includesOverdue = containsToday
         let today = calendar.startOfDay(for: now())
         do {
-            let snapshot = try await source.snapshot(for: range, includingOverdue: includesOverdue)
+            let fetched = try await source.snapshot(for: range, includingOverdue: includesOverdue)
             guard generation == loadGeneration else { return }
+            // 将来回は元のリマインダーと同じリストなので、展開の元を外せば出ない
+            let snapshot = TimelineSnapshot(
+                items: fetched.items.filter(isShown),
+                overdue: fetched.overdue.filter(isShown),
+                recurring: fetched.recurring.filter(isShown)
+            )
             // 取得元の期限切れは範囲より前のものだけ。週表示では週の中の過ぎた日の未完了も足して、
             // 日表示で今日を見たときと同じ内容にする（その日の列にも残る）
             let overdueInRange = includesOverdue
@@ -220,6 +234,33 @@ public final class TimelineModel {
         } catch {
             guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// カレンダー（リスト）を画面に出す・出さないを切り替える。隠した項目はすぐ消し、選択も外れる。
+    public func setCalendar(_ id: String, hidden: Bool) async {
+        if hidden {
+            guard hiddenCalendarIDs.insert(id).inserted else { return }
+            timeline = DayTimeline(
+                items: (timeline.allDay + timeline.timed).filter(isShown), overdue: timeline.overdue.filter(isShown)
+            )
+            layOut()
+            // 進行中の読み込みが、隠す前の内容で上書きしないようにする
+            loadGeneration += 1
+        } else {
+            guard hiddenCalendarIDs.remove(id) != nil else { return }
+        }
+        await load()
+    }
+
+    private func isShown(_ item: TimelineItem) -> Bool {
+        !hiddenCalendarIDs.contains(item.calendarIdentifier)
+    }
+
+    /// 失敗しても一覧が古いままになるだけなので、エラーは表示しない。
+    private func loadCalendars() async {
+        if let loaded = try? await source.calendars() {
+            calendars = loaded
         }
     }
 
@@ -714,6 +755,7 @@ public final class TimelineModel {
             return
         }
         guard access == .granted else { return }
+        await loadCalendars()
         // 日付変更の通知を受けられないまま（バックグラウンドで日をまたぐ等）戻った場合に追従する。
         if followsToday, !calendar.isDate(day, inSameDayAs: now()) {
             day = calendar.startOfDay(for: now())
