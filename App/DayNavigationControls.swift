@@ -100,11 +100,15 @@ extension DayNavigationControls {
     /// 削除して保留にしている間の通知。実際に消すまでの間は取り消せることを知らせる。
     private func deletionNotice(_ deletion: PendingDeletion) -> some View {
         HStack(spacing: 8) {
+            // 長いタイトルは途中を省く。「削除しました」と取り消し方は必ず読めるようにする
             Text("「\(deletion.item.title)」を削除しました")
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .frame(maxWidth: 220, alignment: .trailing)
             #if os(macOS)
             Text("⌘z で取り消し")
+                .lineLimit(1)
+                .fixedSize()
             #else
             // iPhone にはキーが無いので、ここから取り消す
             Button("取り消す") { Task { await model.undo() } }
@@ -113,7 +117,8 @@ extension DayNavigationControls {
         }
         .font(.dayoSmall)
         .foregroundStyle(.secondary)
-        .frame(maxWidth: 280, alignment: .trailing)
+        // 入力欄に押されて折り返さないよう、通知は自分の幅を保つ（縮むのは入力欄の側）
+        .fixedSize()
         .padding(.trailing, 4)
         .transition(.opacity)
         .accessibilityElement(children: .combine)

@@ -46,6 +46,8 @@ struct DateJumpView: View {
             )
             .datePickerStyle(.graphical)
             .labelsHidden()
+            // 見出しや詳細編集と同じく、月と曜日は日本語で出す
+            .environment(\.locale, Locale(identifier: "ja_JP"))
             .frame(maxWidth: .infinity)
         }
         .padding(12)
@@ -62,7 +64,7 @@ struct DateJumpView: View {
             return "日付を入力して return、または日を選ぶ"
         }
         guard let typedDay else { return "日付として読めません" }
-        return "\(typedDay.formatted(.dateTime.year().month().day().weekday())) へ移動"
+        return "\(TimelineTitle.text(for: typedDay, showsWeekNumber: false)) へ移動"
     }
 
     private func go(to day: Date) {
