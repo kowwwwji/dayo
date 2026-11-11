@@ -1360,6 +1360,30 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.selection == grid("sat", 15))
     }
 
+    /// 保存の直後に来る変更通知の読み込みが、保存後の読み直しを追い越す。予定の id は開始日時を含むので、
+    /// 追い越した側の結果では別の id になっている。
+    @Test func theSelectionFollowsAMovedEventWhenAChangeNotificationReloadsFirst() async {
+        let source = FakeSource()
+        let (model, _) = await loaded([make("x#1", calendarItem: "x", "2026-11-10T09:00:00Z")], source: source)
+        model.selectNext()
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [make("x#2", calendarItem: "x", "2026-11-10T09:15:00Z")], overdue: []
+        )
+        source.gate = true
+
+        let move = Task { await model.moveSelectionInTime(1, span: .thisOccurrence) }
+        await source.waitForPending(1)
+        let notified = Task { await model.load() }
+        await source.waitForPending(2)
+        source.release(at: 0)
+        await move.value
+        source.release(at: 0)
+        await notified.value
+
+        #expect(model.selection == grid("x#2", 10))
+        #expect(model.selectedItem?.start == iso("2026-11-10T09:15:00Z"))
+    }
+
     @Test func aFailedMoveOutOfTheWeekKeepsTheViewAndShowsTheError() async {
         let source = FakeSource()
         source.updateError = TestError()

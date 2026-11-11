@@ -225,9 +225,15 @@ public final class TimelineModel {
                 }
                 : []
             let virtual = futureOccurrences(of: snapshot.recurring, in: range)
+            let selected = cursorPosition.flatMap { position in selectedItem.map { (position: position, item: $0) } }
             timeline = DayTimeline(items: snapshot.items + virtual, overdue: snapshot.overdue + overdueInRange)
             hidePendingDeletion()
             layOut()
+            // 予定の id は開始日時を含む。動かした直後の表示（古い id のまま日時だけ変えたもの）を読み直すと別の id になるので、
+            // 同じ元データ・同じ日時の項目へ選択を付け替える
+            if cursorPosition == nil, let selected {
+                cursorPosition = position(of: selected.item, startingAt: selected.item.start, like: selected.position)
+            }
             hasLoaded = true
             loadedRange = range
             errorMessage = nil
