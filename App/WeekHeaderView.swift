@@ -2,7 +2,7 @@ import Combine
 import DayoCore
 import SwiftUI
 
-/// 曜日と日付の行。今日は赤丸で示す。日表示では 1 日分、3 日・週表示では列の数だけ並べる。
+/// 日付と曜日の行。今日は赤丸で示す。日表示では 1 日分、3 日・週表示では列の数だけ並べる。
 /// 左右の余白をグリッドと同じにして、各日を列の中央に置く。
 struct DayLabelsRow: View {
     let days: [Date]
@@ -15,8 +15,6 @@ struct DayLabelsRow: View {
             ForEach(days, id: \.self) { day in
                 let isToday = Calendar.autoupdatingCurrent.isDate(day, inSameDayAs: now)
                 HStack(spacing: 4) {
-                    Text(day.formatted(.dateTime.weekday(.narrow).locale(Locale(identifier: "ja_JP"))))
-                        .foregroundStyle(.secondary)
                     Text("\(Calendar.autoupdatingCurrent.component(.day, from: day))")
                         .fontWeight(isToday ? .semibold : .regular)
                         .foregroundStyle(isToday ? .white : .primary)
@@ -24,6 +22,8 @@ struct DayLabelsRow: View {
                         .background {
                             if isToday { Circle().fill(.red) }
                         }
+                    Text(day.formatted(.dateTime.weekday(.narrow).locale(Locale(identifier: "ja_JP"))))
+                        .foregroundStyle(.secondary)
                 }
                 .font(.dayoSmall.monospacedDigit())
                 .frame(maxWidth: .infinity)
