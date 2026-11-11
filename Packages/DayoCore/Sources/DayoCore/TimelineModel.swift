@@ -4,23 +4,25 @@ import Observation
 /// 一度に表示する範囲。
 public enum TimelineMode: String, CaseIterable, Sendable {
     case day
+    /// 基準の日から 3 日。
+    case threeDays
     case week
 }
 
 /// タイムライン画面の状態。権限・表示範囲・読み込み・完了操作・変更監視を持つ。
-/// 日表示と週表示は列の数が違うだけで、同じ状態から導く。
+/// 日表示・3 日表示・週表示は列の数が違うだけで、同じ状態から導く。
 @MainActor
 @Observable
 public final class TimelineModel {
     public private(set) var access: AccessStatus = .notDetermined
     public private(set) var mode: TimelineMode
-    /// 表示の基準日（その日の 0:00）。週表示ではこの日を含む週を出す。
+    /// 表示の基準日（その日の 0:00）。3 日表示ではこの日を左端に置き、週表示ではこの日を含む週を出す。
     public private(set) var day: Date
     /// 表示範囲の項目（将来回の仮想項目を含む）をセクションに振り分けたもの。
     public private(set) var timeline = DayTimeline(items: [], overdue: [])
     /// 表示範囲の日ごとの列。日表示なら 1 列。
     public private(set) var columns: [TimelineColumn] = []
-    /// 終日欄の帯。週表示で使う。
+    /// 終日欄の帯。列が複数の表示で使う。
     public private(set) var allDaySpans: [AllDaySpan] = []
     /// 一度でも読み込みに成功したか。空表示を出す前の判定に使う。
     public private(set) var hasLoaded = false
@@ -41,7 +43,7 @@ public final class TimelineModel {
     private let source: CalendarSource
     private let calendar: Calendar
     private let now: () -> Date
-    /// 「今日」を表示中なら日付が変わったとき新しい今日へ追従する。
+    /// 今日に合わせて表示中なら、日付が変わったとき新しい今日へ追従する。
     private var followsToday = true
     /// 古い読み込み結果が新しい結果を上書きしないよう、最新の読み込みだけ採用する。
     private var loadGeneration = 0
@@ -74,10 +76,15 @@ public final class TimelineModel {
         observation?.cancel()
     }
 
-    /// 表示範囲。日表示なら `day` の 1 日、週表示なら `day` を含む週（週の始まりは暦の設定に従う）。
+    /// 表示範囲。日表示なら `day` の 1 日、3 日表示なら `day` から 3 日、
+    /// 週表示なら `day` を含む週（週の始まりは暦の設定に従う）。
     public var range: DateInterval {
-        let component: Calendar.Component = mode == .day ? .day : .weekOfYear
-        return calendar.dateInterval(of: component, for: day) ?? DateInterval(start: day, duration: 86_400)
+        let found: DateInterval? = switch mode {
+        case .day: calendar.dateInterval(of: .day, for: day)
+        case .threeDays: calendar.date(byAdding: .day, value: 3, to: day).map { DateInterval(start: day, end: $0) }
+        case .week: calendar.dateInterval(of: .weekOfYear, for: day)
+        }
+        return found ?? DateInterval(start: day, duration: 86_400)
     }
 
     /// 表示範囲の各日の 0:00。
@@ -375,23 +382,23 @@ public final class TimelineModel {
 
     public func setMode(_ newMode: TimelineMode) async {
         guard newMode != mode else { return }
-        // 今週を見ていて日表示へ戻すなら、基準日ではなく今日を出す
-        if newMode == .day, containsToday {
+        // 今日が見えているなら、切り替えた先でも今日を基準にする（今週から日表示へ戻すと今日、3 日表示なら今日が左端）
+        if containsToday {
             day = calendar.startOfDay(for: now())
         }
         mode = newMode
-        followsToday = containsToday
+        followsToday = isAlignedWithToday
         // 列の数は読み込みを待たずに合わせる。1 列のまま週の見出しが出ると列がずれて見える
         layOut()
         await load()
     }
 
-    /// 前の日、週表示なら前の週へ。
+    /// 前の日、週表示なら前の週へ。3 日表示も 1 日ずつ動く。
     public func showPrevious() async {
         await show(day: calendar.date(byAdding: stepComponent, value: -1, to: day))
     }
 
-    /// 次の日、週表示なら次の週へ。
+    /// 次の日、週表示なら次の週へ。3 日表示も 1 日ずつ動く。
     public func showNext() async {
         await show(day: calendar.date(byAdding: stepComponent, value: 1, to: day))
     }
@@ -400,9 +407,9 @@ public final class TimelineModel {
         await show(day: now())
     }
 
-    /// 日付が変わった。今日を追従中か、表示していた日が新しい今日になったなら今日へ移る。
+    /// 日付が変わった。今日を追従中か、表示が新しい今日に合ったなら今日へ移る。
     public func handleDayChanged() async {
-        guard followsToday || containsToday else { return }
+        guard followsToday || isAlignedWithToday else { return }
         await showToday()
     }
 
@@ -424,11 +431,17 @@ public final class TimelineModel {
     private func show(day newDay: Date?) async {
         guard let newDay else { return }
         day = calendar.startOfDay(for: newDay)
-        followsToday = containsToday
+        followsToday = isAlignedWithToday
         await load()
     }
 
-    private var stepComponent: Calendar.Component { mode == .day ? .day : .weekOfYear }
+    private var stepComponent: Calendar.Component { mode == .week ? .weekOfYear : .day }
+
+    /// 表示が今日に合っているか。3 日表示は今日が左端のときだけ。今日が途中にある並びは自分でずらしたものなので、
+    /// 日付が変わっても動かさない。
+    private var isAlignedWithToday: Bool {
+        mode == .threeDays ? day == calendar.startOfDay(for: now()) : containsToday
+    }
 
     private func days(in range: DateInterval) -> [Date] {
         var result: [Date] = []

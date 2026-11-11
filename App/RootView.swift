@@ -16,7 +16,7 @@ struct RootView: View {
 
     private var title: String {
         switch model.mode {
-        case .day: DayTitle.text(for: model.day, showsWeekNumber: showsWeekNumber)
+        case .day, .threeDays: DayTitle.text(for: model.day, showsWeekNumber: showsWeekNumber)
         case .week: DayTitle.text(forWeek: model.days, showsWeekNumber: showsWeekNumber)
         }
     }
