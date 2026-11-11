@@ -161,19 +161,6 @@ struct ItemEditorView: View {
                         .help("Google マップで開く")
                     }
                 }
-                // URL は空でも欄を出して書き込めるようにする。ブラウザで開けるものなら、隣のボタンで開く
-                if isEvent {
-                    HStack(spacing: 6) {
-                        TextField("URL", text: $model.urlText)
-                        if let url = model.linkURL {
-                            Link(destination: url) {
-                                Image(systemName: "safari")
-                            }
-                            .help("ブラウザで開く")
-                            .accessibilityLabel("ブラウザで開く")
-                        }
-                    }
-                }
                 // Google カレンダーがメモに足すビデオ会議の案内は、メモ欄には出さずリンクにする
                 if let url = model.conferenceURL {
                     LabeledContent("ビデオ会議") {
@@ -225,6 +212,19 @@ struct ItemEditorView: View {
                     }
                     ForEach(model.destinations) { destination in
                         Text(destination.name).tag(destination.id)
+                    }
+                }
+                // URL は空でも欄を出して書き込めるようにする。ブラウザで開けるものなら、隣のボタンで開く
+                if isEvent {
+                    HStack(spacing: 6) {
+                        TextField("URL", text: $model.urlText)
+                        if let url = model.linkURL {
+                            Link(destination: url) {
+                                Image(systemName: "safari")
+                            }
+                            .help("ブラウザで開く")
+                            .accessibilityLabel("ブラウザで開く")
+                        }
                     }
                 }
                 Section("メモ") {
