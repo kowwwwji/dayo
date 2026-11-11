@@ -126,6 +126,7 @@ struct ItemEditorView: View {
     @State private var confirmsDelete = false
     @FocusState private var titleFocused: Bool
     @FocusState private var saveFocused: Bool
+    @FocusState private var notesFocused: Bool
 
     private enum PendingAction { case save, delete }
 
@@ -194,12 +195,25 @@ struct ItemEditorView: View {
                 Section("メモ") {
                     TextEditor(text: $model.notes)
                         .frame(minHeight: 60)
+                        // メモは空だとカーソルが見えにくく、フォーカスがあるか分からない。ある間は枠で示す
+                        .focused($notesFocused)
+                        .overlay {
+                            if notesFocused {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                                    .allowsHitTesting(false)
+                            }
+                        }
                         #if os(macOS)
                         // メモは最後の入力欄なので、Tab はタブ文字ではなく保存ボタンへ進む。Shift+Tab は前の入力欄へ戻る
                         // （Shift+Tab は配列によって別の文字で届くので、両方を受けて修飾キーで見分ける）
                         .onKeyPress(keys: [.tab, Self.backtab]) { press in
                             if press.modifiers.contains(.shift) || press.key == Self.backtab {
-                                Self.focusBeforeNotes()
+                                // 行き先は AppKit で決めるので、メモを離れたことは自分で伝える（伝えないと枠が残る）。
+                                // 先に移すと、状態を下ろしたときにフォーカスごと外れるので、下ろしてから移す
+                                let target = Self.fieldAboveNotes()
+                                notesFocused = false
+                                DispatchQueue.main.async { target?.window?.makeFirstResponder(target) }
                             } else {
                                 saveFocused = true
                             }
@@ -287,14 +301,14 @@ struct ItemEditorView: View {
     /// Shift+Tab で届く文字（AppKit の back tab）。
     private static let backtab = KeyEquivalent("\u{19}")
 
-    /// メモのすぐ上にある、フォーカスを受けられる欄へ戻す。
+    /// メモのすぐ上にある、フォーカスを受けられる欄。
     /// AppKit の「前のキービュー」は使えない（メモ自身を包むビューや下のボタンを返し、画面の並びと合わない）。
     /// どの欄がフォーカスを受けるかは期日の有無やキーボード操作の設定で変わるので、並びを自前で持たず、画面上の位置から探す。
-    private static func focusBeforeNotes() {
+    private static func fieldAboveNotes() -> NSView? {
         // ポップオーバーの中の欄は、親のウインドウの first responder としても報告される。探すのは、メモが実際に載っているウインドウの中
         guard let notes = NSApp.keyWindow?.firstResponder as? NSView, let window = notes.window,
               let root = window.contentView?.superview ?? window.contentView
-        else { return }
+        else { return nil }
         // ウインドウの座標は上が大きい
         let top = notes.convert(notes.bounds, to: nil).maxY
         var nearest: (view: NSView, frame: CGRect)?
@@ -311,7 +325,7 @@ struct ItemEditorView: View {
             view.subviews.forEach(visit)
         }
         visit(root)
-        if let nearest { window.makeFirstResponder(nearest.view) }
+        return nearest?.view
     }
     #endif
 
