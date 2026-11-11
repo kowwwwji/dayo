@@ -42,7 +42,6 @@ extension TimelineItem {
             accountName: accountName,
             color: color,
             recurrence: recurrence,
-            isShared: isShared,
             hasRecurrence: hasRecurrence,
             notes: notes,
             calendarIdentifier: calendarIdentifier,

@@ -82,7 +82,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
     TimelineItem(
         id: id, calendarItemIdentifier: id, kind: .reminder, title: id, start: start, end: nil,
         isAllDay: false, isCompleted: false, sourceName: "", accountName: "",
-        color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false
+        color: CGColor(gray: 0, alpha: 1), recurrence: nil
     )
 }
 
@@ -256,7 +256,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         let event = TimelineItem(
             id: "e", calendarItemIdentifier: "e", kind: .event, title: "夜勤", start: start,
             end: iso("2026-11-10T02:00:00Z"), isAllDay: false, isCompleted: false,
-            sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false
+            sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil
         )
         source.snapshots[d0] = TimelineSnapshot(items: [event], overdue: [])
         let model = makeModel(source) { self.d0 }
@@ -306,7 +306,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         TimelineItem(
             id: id, calendarItemIdentifier: id, kind: .reminder, title: id, start: start, end: nil,
             isAllDay: allDay, isCompleted: false, sourceName: "", accountName: "",
-            color: CGColor(gray: 0, alpha: 1), recurrence: RecurrenceSpec(frequency: .daily), isShared: false
+            color: CGColor(gray: 0, alpha: 1), recurrence: RecurrenceSpec(frequency: .daily)
         )
     }
 
@@ -368,7 +368,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
             id: "予定", calendarItemIdentifier: "予定", kind: .event, title: "予定",
             start: iso("2026-11-09T13:00:00Z"), end: iso("2026-11-09T14:00:00Z"), isAllDay: false,
             isCompleted: false, sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1),
-            recurrence: nil, isShared: false
+            recurrence: nil
         )
         source.snapshots[weekStart] = TimelineSnapshot(
             items: [monday, done, todayItem, event], overdue: [lastWeek]
@@ -399,7 +399,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         let trip = TimelineItem(
             id: "trip", calendarItemIdentifier: "trip", kind: .event, title: "出張",
             start: day(9), end: iso("2026-11-10T23:59:59Z"), isAllDay: true, isCompleted: false,
-            sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false
+            sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil
         )
         source.snapshots[weekStart] = TimelineSnapshot(items: [trip], overdue: [])
         let model = makeModel(source) { self.today }
@@ -568,7 +568,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
             id: "e", calendarItemIdentifier: "e", kind: .event, title: "面談",
             start: iso("2026-11-10T09:00:00Z"), end: iso("2026-11-10T10:30:00Z"), isAllDay: false,
             isCompleted: false, sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1),
-            recurrence: nil, isShared: false
+            recurrence: nil
         )
         source.snapshots[weekStart] = TimelineSnapshot(items: [event], overdue: [])
         let model = makeModel(source) { self.today }
@@ -596,7 +596,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
             id: "e", calendarItemIdentifier: "e", kind: .event, title: "夜勤",
             start: iso("2026-11-10T22:00:00Z"), end: iso("2026-11-11T02:00:00Z"), isAllDay: false,
             isCompleted: false, sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1),
-            recurrence: nil, isShared: false
+            recurrence: nil
         )
         source.snapshots[weekStart] = TimelineSnapshot(items: [event], overdue: [])
         let model = makeModel(source) { self.today }
@@ -626,7 +626,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         TimelineItem(
             id: id, calendarItemIdentifier: id, kind: kind, title: id, start: start, end: end,
             isAllDay: allDay, isCompleted: false, sourceName: "", accountName: "",
-            color: CGColor(gray: 0, alpha: 1), recurrence: recurrence, isShared: false, isVirtual: isVirtual
+            color: CGColor(gray: 0, alpha: 1), recurrence: recurrence, isVirtual: isVirtual
         )
     }
 
@@ -761,7 +761,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
             id: "r", calendarItemIdentifier: "r", kind: .reminder, title: "電話",
             start: iso("2026-11-10T09:00:00Z"), end: nil, isAllDay: false, isCompleted: false,
             sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil,
-            isShared: false, earlyReminderMinutes: 10
+            earlyReminderMinutes: 10
         )
     }
 
@@ -785,7 +785,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
             id: "e", calendarItemIdentifier: "e", kind: .event, title: "面談", start: start,
             end: start.addingTimeInterval(90 * 60), isAllDay: false, isCompleted: false,
             sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1),
-            recurrence: RecurrenceSpec(frequency: .weekly, weekdays: [3]), isShared: false,
+            recurrence: RecurrenceSpec(frequency: .weekly, weekdays: [3]),
             notes: "資料", calendarIdentifier: "cal"
         )
         let moved = ItemDraft(moving: event, to: iso("2026-11-10T11:00:00Z"))
@@ -819,7 +819,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         return TimelineItem(
             id: id, calendarItemIdentifier: id, kind: .event, title: id, start: start,
             end: start.addingTimeInterval(3600), isAllDay: false, isCompleted: false, sourceName: "",
-            accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false
+            accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil
         )
     }
 
@@ -906,8 +906,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         let pill = TimelineItem(
             id: "薬", calendarItemIdentifier: "薬", kind: .reminder, title: "薬",
             start: iso("2026-11-10T21:00:00Z"), end: nil, isAllDay: false, isCompleted: false, sourceName: "",
-            accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: RecurrenceSpec(frequency: .daily),
-            isShared: false
+            accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: RecurrenceSpec(frequency: .daily)
         )
         source.snapshots[weekStart] = TimelineSnapshot(
             items: [pill, event("fri", "2026-11-13T09:00:00Z")], overdue: [], recurring: [pill]
@@ -1112,7 +1111,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
             id: id, calendarItemIdentifier: calendarItem ?? id, kind: kind, title: id, start: start,
             end: kind == .event ? hours.map { start.addingTimeInterval($0 * 3600) } : nil,
             isAllDay: allDay, isCompleted: false, sourceName: "", accountName: "",
-            color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false, isEditable: editable
+            color: CGColor(gray: 0, alpha: 1), recurrence: nil, isEditable: editable
         )
     }
 
@@ -1770,7 +1769,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
             TimelineItem(
                 id: id, calendarItemIdentifier: id, kind: .event, title: id, start: start, end: iso(end),
                 isAllDay: true, isCompleted: false, sourceName: "", accountName: "",
-                color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false
+                color: CGColor(gray: 0, alpha: 1), recurrence: nil
             )
         }
         // 月〜水の出張は左で、木〜土の旅行は右で切れる
@@ -1796,7 +1795,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         return TimelineItem(
             id: id, calendarItemIdentifier: id, kind: .event, title: id, start: start,
             end: start.addingTimeInterval(3600), isAllDay: false, isCompleted: false, sourceName: "",
-            accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false,
+            accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil,
             isEditable: editable
         )
     }

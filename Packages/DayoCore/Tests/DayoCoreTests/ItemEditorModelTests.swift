@@ -55,7 +55,7 @@ private func item(
     TimelineItem(
         id: "x", calendarItemIdentifier: "x", kind: kind, title: "面談", start: start, end: end,
         isAllDay: isAllDay, isCompleted: false, sourceName: "仕事", accountName: "",
-        color: CGColor(gray: 0, alpha: 1), recurrence: recurrence, isShared: false,
+        color: CGColor(gray: 0, alpha: 1), recurrence: recurrence,
         hasRecurrence: hasRecurrence, notes: "メモ", calendarIdentifier: "cal-1"
     )
 }

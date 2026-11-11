@@ -18,7 +18,7 @@ private func make(
         id: id, calendarItemIdentifier: id, kind: kind, title: title.isEmpty ? id : title,
         start: start, end: nil, isAllDay: isAllDay, isCompleted: false,
         sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1),
-        recurrence: nil, isShared: false
+        recurrence: nil
     )
 }
 

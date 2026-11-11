@@ -106,7 +106,7 @@ public final class ItemEditorModel {
             id: "new", calendarItemIdentifier: "", kind: kind, title: "", start: start,
             end: kind == .event ? end : nil, isAllDay: isAllDay, isCompleted: false,
             sourceName: "既定", accountName: "", color: TimelineItem.fallbackColor,
-            recurrence: nil, isShared: false, earlyReminderMinutes: earlyReminderMinutes
+            recurrence: nil, earlyReminderMinutes: earlyReminderMinutes
         )
     }
 

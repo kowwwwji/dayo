@@ -203,7 +203,7 @@ private func iso(_ string: String) -> Date {
         TimelineItem(
             id: "x", calendarItemIdentifier: "x", kind: .reminder, title: "", start: start, end: nil,
             isAllDay: false, isCompleted: false, sourceName: "", accountName: "",
-            color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false
+            color: CGColor(gray: 0, alpha: 1), recurrence: nil
         )
     }
 

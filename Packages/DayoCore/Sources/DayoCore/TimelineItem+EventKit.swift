@@ -24,8 +24,6 @@ extension TimelineItem {
             accountName: event.calendar?.source?.title ?? "",
             color: event.calendar?.cgColor ?? Self.fallbackColor,
             recurrence: Self.editableRecurrence(rules),
-            // TODO: 共有判定の手段はフェーズ2で調べる（EventKit に直接の API がない）
-            isShared: false,
             hasRecurrence: !rules.isEmpty,
             notes: event.notes,
             calendarIdentifier: event.calendar?.calendarIdentifier ?? "",
@@ -51,8 +49,6 @@ extension TimelineItem {
             accountName: reminder.calendar?.source?.title ?? "",
             color: reminder.calendar?.cgColor ?? Self.fallbackColor,
             recurrence: Self.editableRecurrence(rules),
-            // TODO: 共有判定の手段はフェーズ2で調べる
-            isShared: false,
             hasRecurrence: !rules.isEmpty,
             notes: reminder.notes,
             calendarIdentifier: reminder.calendar?.calendarIdentifier ?? "",

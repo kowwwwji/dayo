@@ -31,8 +31,6 @@ public struct TimelineItem: Identifiable, Equatable {
     public var recurrence: RecurrenceSpec?
     /// 何らかの繰り返し規則を持つか。`recurrence == nil` でも true ならカスタム規則。
     public var hasRecurrence: Bool
-    /// 共有リストか。
-    public var isShared: Bool
     public var notes: String?
     /// 保存先のリスト／カレンダーの識別子（`Destination.id` と同じ）。
     public var calendarIdentifier: String
@@ -61,7 +59,6 @@ public struct TimelineItem: Identifiable, Equatable {
         accountName: String,
         color: CGColor,
         recurrence: RecurrenceSpec?,
-        isShared: Bool,
         hasRecurrence: Bool? = nil,
         notes: String? = nil,
         calendarIdentifier: String = "",
@@ -83,7 +80,6 @@ public struct TimelineItem: Identifiable, Equatable {
         self.color = color
         self.recurrence = recurrence
         self.hasRecurrence = hasRecurrence ?? (recurrence != nil)
-        self.isShared = isShared
         self.notes = notes
         self.calendarIdentifier = calendarIdentifier
         self.isEditable = isEditable

@@ -29,7 +29,6 @@ struct RootView: View {
             set: { sidebarHidden = $0 == .detailOnly }
         )) {
             // 表示（日 / 3 日 / 週）をここで切り替える
-            // TODO: リマインダーリストの一覧を足す
             List(selection: Binding<TimelineMode?>(
                 get: { model.mode },
                 set: { mode in

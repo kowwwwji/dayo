@@ -130,7 +130,7 @@ private func reminder(
     TimelineItem(
         id: id, calendarItemIdentifier: id, kind: .reminder, title: id, start: start, end: nil,
         isAllDay: isAllDay, isCompleted: isCompleted, sourceName: "家族", accountName: "iCloud",
-        color: CGColor(gray: 0, alpha: 1), recurrence: recurrence, isShared: false, hasRecurrence: hasRecurrence
+        color: CGColor(gray: 0, alpha: 1), recurrence: recurrence, hasRecurrence: hasRecurrence
     )
 }
 

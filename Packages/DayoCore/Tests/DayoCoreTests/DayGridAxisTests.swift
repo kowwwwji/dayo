@@ -7,7 +7,7 @@ private func placement(_ start: Int, _ end: Int) -> GridPlacement {
     let item = TimelineItem(
         id: "\(start)", calendarItemIdentifier: "\(start)", kind: .event, title: "", start: Date(), end: Date(),
         isAllDay: false, isCompleted: false, sourceName: "", accountName: "",
-        color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false
+        color: CGColor(gray: 0, alpha: 1), recurrence: nil
     )
     return GridPlacement(item: item, startMinute: start, endMinute: end, column: 0, columnCount: 1)
 }

@@ -19,7 +19,7 @@ private func item(
     TimelineItem(
         id: id, calendarItemIdentifier: id, kind: kind, title: id,
         start: iso(start), end: end.map(iso), isAllDay: allDay, isCompleted: false,
-        sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false
+        sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil
     )
 }
 

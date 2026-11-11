@@ -239,7 +239,7 @@ private let reference = tokyo.date(from: DateComponents(year: 2026, month: 11, d
             TimelineItem(
                 id: "x", calendarItemIdentifier: "x", kind: .reminder, title: "", start: dated ? Date() : nil, end: nil,
                 isAllDay: false, isCompleted: false, sourceName: "", accountName: "",
-                color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false, earlyReminderMinutes: minutes
+                color: CGColor(gray: 0, alpha: 1), recurrence: nil, earlyReminderMinutes: minutes
             )
         }
         func draft(_ minutes: Int?, dated: Bool = true) -> ItemDraft {
