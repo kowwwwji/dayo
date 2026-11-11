@@ -143,6 +143,7 @@ struct DayTimelineView: View {
                 PinnedSection(
                     title: "期限切れ",
                     scrollHeight: min(CGFloat(model.timeline.overdue.count) * 40, 140),
+                    leadingInset: 12,
                     scrollTarget: model.selection?.place == .overdue ? model.selection?.itemID : nil
                 ) {
                     ForEach(model.timeline.overdue) { item in
@@ -287,6 +288,8 @@ struct DayTimelineView: View {
 private struct PinnedSection<Content: View>: View {
     let title: String
     var scrollHeight: CGFloat?
+    /// 左に空ける幅。ラベルが長くて左端に付いてしまうセクションで使う（その分、中身はグリッドの線より右へずれる）
+    var leadingInset: CGFloat = 0
     /// 見えるところまでスクロールしたい行の id。`scrollHeight` を渡したときだけ効く
     var scrollTarget: String?
     @ViewBuilder let content: Content
@@ -317,7 +320,8 @@ private struct PinnedSection<Content: View>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        // 左余白は付けない。グリッドの時刻ラベルが左端 0 から始まるので、同じ x に揃える
+        // 既定では左余白を付けない。グリッドの時刻ラベルが左端 0 から始まるので、同じ x に揃える
+        .padding(.leading, leadingInset)
         .padding(.trailing, DayGridView.trailingInset)
         .padding(.vertical, 6)
     }
