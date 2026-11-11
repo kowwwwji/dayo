@@ -763,7 +763,8 @@ public final class TimelineModel {
         await load()
     }
 
-    private func show(day newDay: Date?) async {
+    /// 指した日へ移る（日付ジャンプ）。表示モードはそのままで、週表示ならその日を含む週、3 日表示ならその日が左端。
+    public func show(day newDay: Date?) async {
         guard let newDay else { return }
         day = calendar.startOfDay(for: newDay)
         followsToday = isAlignedWithToday

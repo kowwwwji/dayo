@@ -23,10 +23,14 @@ enum TimelineModeSetting {
 }
 
 /// 前後・今日へ移るボタン。指でもマウスでも押しやすいよう枠付きで大きめにする。
+/// カレンダーのボタンは日付ジャンプを開く。
 /// 「今日」は押すと表示が動くとき（今日を含まない範囲、3 日表示なら今日が左端でないとき）だけ ‹ › の左に現れる。‹ › は右端に固定して位置が変わらないようにする。
 struct DayNavigationControls: View {
     let model: TimelineModel
+    /// キー操作から日付ジャンプを開く入口。iPhone には無い
+    var dateJump: DateJumpRequest?
 
+    @State private var showsDateJump = false
     /// 「更新中」を出しているか。変更がすぐ届いても押したことが分かるよう、少しのあいだ残す
     @State private var showsRefreshing = false
 
@@ -53,6 +57,15 @@ struct DayNavigationControls: View {
             if !model.isAlignedWithToday {
                 Button("今日") { Task { await model.showToday() } }
             }
+            Button { showsDateJump = true } label: {
+                Image(systemName: "calendar")
+                    .frame(minWidth: 20, minHeight: 20)
+            }
+            .accessibilityLabel("日付へ移動")
+            .help("日付へ移動（g）")
+            .popover(isPresented: $showsDateJump, arrowEdge: .bottom) {
+                DateJumpView(model: model) { showsDateJump = false }
+            }
             Button { Task { await model.showPrevious() } } label: {
                 Image(systemName: "chevron.left")
                     .frame(minWidth: 20, minHeight: 20)
@@ -67,6 +80,7 @@ struct DayNavigationControls: View {
         .animation(.default, value: model.isAlignedWithToday)
         .animation(.default, value: showsRefreshing)
         .animation(.default, value: model.pendingDeletion?.item.id)
+        .onChange(of: dateJump?.requests) { showsDateJump = true }
         .onChange(of: model.isRefreshing) { _, refreshing in
             if refreshing {
                 showsRefreshing = true

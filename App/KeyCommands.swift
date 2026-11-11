@@ -24,6 +24,7 @@ enum TimelineKey {
     case shorten
     case deleteSelection
     case undo
+    case jumpToDate
 
     /// キーを押し続けたときに繰り返すか。選択の移動だけ繰り返す。
     /// 完了の切替は保存が終わる前に次が来ると同じ状態を二重に書き込むので、繰り返さない。削除も 1 回押して 1 件だけ。
@@ -88,6 +89,7 @@ enum TimelineKey {
         case "l": self = .selectRight
         case "t": self = .showToday
         case "u": self = .undo
+        case "g": self = .jumpToDate
         // delete（⌫）と前方削除（⌦）も d と同じ
         case "d", "\u{7f}", "\u{F728}": self = .deleteSelection
         case " ": self = .toggleCompleted
@@ -230,6 +232,7 @@ struct KeyHelpView: View {
         ]),
         Section(title: "表示", rows: [
             ("⌘← / ⌘→", "前 / 次の日（週表示では週）"),
+            ("g", "日付を指定して移動"),
             ("⌘1 / ⌘2 / ⌘3", "日表示 / 3日表示 / 週表示"),
             ("⌃⌘s", "サイドバーを出す / 隠す"),
             ("⌘r", "最新の状態に更新"),

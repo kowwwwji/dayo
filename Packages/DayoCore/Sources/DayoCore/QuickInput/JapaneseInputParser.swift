@@ -326,7 +326,7 @@ public struct JapaneseInputParser: InputParser {
     }
 
     /// 全角の数字・記号を半角に寄せる。カナは触らない。
-    private static func normalize(_ text: String) -> String {
+    static func normalize(_ text: String) -> String {
         String(text.map { character -> Character in
             switch character {
             case "０"..."９":

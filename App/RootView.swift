@@ -7,6 +7,7 @@ struct RootView: View {
     let model: TimelineModel
     let quickInput: QuickInputModel
     var quickInputFocus: QuickInputFocus?
+    @State private var dateJump = DateJumpRequest()
     let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
     let makeNewEditor: @MainActor (Date, Bool) -> ItemEditorModel
     @AppStorage(DayTitle.showsWeekNumberKey) private var showsWeekNumber = true
@@ -46,10 +47,12 @@ struct RootView: View {
             VStack(spacing: 0) {
                 // 日付の移動は入力欄と同じ行の右端に置く。日付そのものはウィンドウタイトルに出す
                 QuickInputBar(model: quickInput, focus: quickInputFocus) {
-                    DayNavigationControls(model: model)
+                    DayNavigationControls(model: model, dateJump: dateJump)
                 }
                 Divider()
-                DayTimelineView(model: model, makeEditor: makeEditor, makeNewEditor: makeNewEditor)
+                DayTimelineView(
+                    model: model, makeEditor: makeEditor, makeNewEditor: makeNewEditor, dateJump: dateJump
+                )
             }
             .navigationTitle(title)
         }

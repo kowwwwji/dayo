@@ -2689,3 +2689,30 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.calendars.map(\.id) == ["work", "busy", "home", "new"])
     }
 }
+
+@MainActor
+@Suite struct TimelineModelJumpTests {
+    /// 2026-11-10 は火曜。
+    let today = iso("2026-11-10T00:00:00Z")
+
+    @Test(arguments: [
+        (TimelineMode.day, "2026-11-20T00:00:00Z", "2026-11-21T00:00:00Z"),
+        // 3 日表示はその日が左端
+        (.threeDays, "2026-11-20T00:00:00Z", "2026-11-23T00:00:00Z"),
+        // 週表示はその日を含む週（日曜始まり）
+        (.week, "2026-11-15T00:00:00Z", "2026-11-22T00:00:00Z"),
+    ])
+    func showingADayKeepsTheModeAndLoadsTheRangeAroundIt(mode: TimelineMode, start: String, end: String) async {
+        let source = FakeSource()
+        let model = TimelineModel(source: source, calendar: utc, mode: mode) { self.today }
+
+        // 時刻が付いていても、その日として扱う
+        await model.show(day: iso("2026-11-20T15:30:00Z"))
+
+        #expect(model.mode == mode)
+        #expect(model.day == iso("2026-11-20T00:00:00Z"))
+        #expect(model.range == DateInterval(start: iso(start), end: iso(end)))
+        #expect(source.requests.map(\.range) == [model.range])
+        #expect(!model.isAlignedWithToday)
+    }
+}

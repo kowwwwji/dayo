@@ -9,6 +9,8 @@ struct DayTimelineView: View {
     let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
     /// 新規登録のモデルを作る。引数は開始日時と、終日として開くか
     let makeNewEditor: @MainActor (Date, Bool) -> ItemEditorModel
+    /// 日付ジャンプを開く入口（Mac の `g`）。ボタンは入力欄の行にある
+    var dateJump: DateJumpRequest?
     @Environment(\.scenePhase) private var scenePhase
     @State private var editor: ItemEditorModel?
     @State private var editorAnchor: String?
@@ -94,6 +96,9 @@ struct DayTimelineView: View {
             guard let item = model.selectedItem, item.isEditable else { return false }
             delete(item)
         case .undo: Task { await model.undo() }
+        case .jumpToDate:
+            guard let dateJump else { return false }
+            dateJump.request()
         case .clearSelection:
             // 一覧が出ていれば、まずそれを閉じる
             if showsKeyHelp {
