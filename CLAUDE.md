@@ -31,3 +31,8 @@
 - 撮った画像の一部を切り出すのは `magick in.png -crop 幅x高さ+0+0 +repage out.png`。`sips -c` は中央から切るので上端を取れない
 - `open -n -g` で起動してもウインドウが出ないときは、起動引数に `-ApplePersistenceIgnoreState YES` を足す（ウインドウを閉じた状態が保存されていると、その状態が復元される）
 - `swift test` は `timeout 300 swift test` で走らせる。モデルの処理を待つテストは、実装前だと待ち続けて終わらないことがある
+- `WindowGroup` は、保存するウインドウの位置と大きさの名前を中身のビューの型から作る。`RootView` に外から修飾子を付けると名前が変わり、位置を忘れる。修飾子は `RootView` の中に付ける
+- 「入れ直しても許可が引き継がれる」の確認は、中身の違うビルドで行う（`CURRENT_PROJECT_VERSION` を一時的に変えて `scripts/install.sh`、`codesign -dv --verbose=4` で CDHash が変わったことを見る）。同じビルドの入れ直しは CDHash が同じで確認にならない
+- 自己署名の証明書は `security find-identity -p codesigning` に `CSSMERR_TP_NOT_TRUSTED` と出るが、`codesign` はそのまま使える（`-v` を付けると一覧に出ない）
+- シェルスクリプトで変数の直後に日本語を続けるときは `${VAR}` と書く（`"$VAR」"` は変数名の一部として読まれ、unbound variable になる）
+- 自分が起動していない Dayo のプロセス（別の worktree のビルドなど）は終了できない。ユーザーに終了を頼む
