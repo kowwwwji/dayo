@@ -33,6 +33,10 @@ public final class TimelineModel {
     /// （前の範囲の内容で帯の有無を決めると、読み込み後に位置がずれる）。
     public var isLoadedForRange: Bool { loadedRange == range }
     public private(set) var errorMessage: String?
+    /// `refresh()` が走っている間だけ true。画面で「更新中」を示すのに使う。
+    public var isRefreshing: Bool { activeRefreshes > 0 }
+    /// 重ねて呼ばれても、最後の 1 つが終わるまで更新中のままにする。
+    private var activeRefreshes = 0
 
     /// キー操作で選択中の項目。画面から消えたら外れる。
     public var selection: TimelineSelection? { cursorPosition?.selection }
@@ -116,6 +120,8 @@ public final class TimelineModel {
     /// 同期を待たずに最新を見たいときに呼ぶ。同期元へ取り込みを頼み、いま手元にある内容で読み直す。
     /// 取り込みで届いた分は、取得元の変更通知でもう一度読み直される。
     public func refresh() async {
+        activeRefreshes += 1
+        defer { activeRefreshes -= 1 }
         await source.refresh()
         await load()
     }

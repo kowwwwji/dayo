@@ -27,11 +27,26 @@ enum TimelineModeSetting {
 struct DayNavigationControls: View {
     let model: TimelineModel
 
+    /// 「更新中」を出しているか。読み直しは一瞬で終わるので、押したことが分かるよう少しのあいだ残す
+    @State private var showsRefreshing = false
+
     /// 前後に動く単位。3 日表示も 1 日ずつ動く。
     private var unit: String { model.mode == .week ? "週" : "日" }
 
     var body: some View {
         HStack(spacing: 6) {
+            if showsRefreshing {
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("更新中")
+                        .font(.dayoSmall)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.trailing, 4)
+                .transition(.opacity)
+                .accessibilityElement(children: .combine)
+            }
             if !model.isAlignedWithToday {
                 Button("今日") { Task { await model.showToday() } }
             }
@@ -47,6 +62,17 @@ struct DayNavigationControls: View {
             .accessibilityLabel("次の\(unit)")
         }
         .animation(.default, value: model.isAlignedWithToday)
+        .animation(.default, value: showsRefreshing)
+        .onChange(of: model.isRefreshing) { _, refreshing in
+            if refreshing {
+                showsRefreshing = true
+            } else {
+                Task {
+                    try? await Task.sleep(for: .seconds(1))
+                    if !model.isRefreshing { showsRefreshing = false }
+                }
+            }
+        }
         .buttonStyle(.bordered)
         .controlSize(.large)
     }

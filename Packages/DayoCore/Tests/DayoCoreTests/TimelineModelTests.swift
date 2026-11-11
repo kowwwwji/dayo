@@ -114,6 +114,22 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.timeline.timed == [added])
     }
 
+    @Test func isRefreshingOnlyWhileARefreshRuns() async {
+        let source = FakeSource()
+        let model = makeModel(source) { self.d0 }
+        await model.activate()
+        #expect(!model.isRefreshing)
+
+        source.gate = true
+        let refresh = Task { await model.refresh() }
+        await source.waitForPending(1)
+        #expect(model.isRefreshing)
+
+        source.release(at: 0)
+        await refresh.value
+        #expect(!model.isRefreshing)
+    }
+
     @Test func activateLoadsTodayWithOverdue() async {
         let source = FakeSource()
         let today = item("today", start: iso("2026-11-10T09:00:00Z"))
