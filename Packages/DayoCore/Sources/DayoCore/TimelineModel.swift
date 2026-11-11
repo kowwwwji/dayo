@@ -32,6 +32,10 @@ public final class TimelineModel {
     public var isLoadedForRange: Bool { loadedRange == range }
     public private(set) var errorMessage: String?
 
+    /// キー操作で選択中の項目。画面から消えたら外れる。
+    public var selection: TimelineSelection? { cursorPosition?.selection }
+    private var cursorPosition: TimelineCursor.Position?
+
     private let source: CalendarSource
     private let calendar: Calendar
     private let now: () -> Date
@@ -181,6 +185,83 @@ public final class TimelineModel {
         await apply(ItemDraft(makingAllDay: item, on: calendar.startOfDay(for: day)), to: item, span: span)
     }
 
+    /// 選択中の項目。
+    public var selectedItem: TimelineItem? {
+        cursorPosition.flatMap { cursor.item(for: $0.selection) }
+    }
+
+    /// 選択を下の項目へ。何も選択していなければ、今日（見えていなければ最初の日）の列の先頭を選ぶ。
+    public func selectNext() {
+        cursorPosition = movedVertically(by: 1)
+    }
+
+    /// 選択を上の項目へ。何も選択していなければ、今日（見えていなければ最初の日）の列の末尾を選ぶ。
+    public func selectPrevious() {
+        cursorPosition = movedVertically(by: -1)
+    }
+
+    /// 週表示では左隣の、項目のある日の列へ。無ければ前の週へ移る。日表示では前の日へ。
+    public func selectLeft() async {
+        await selectSideways(by: -1)
+    }
+
+    /// 週表示では右隣の、項目のある日の列へ。無ければ次の週へ移る。日表示では次の日へ。
+    public func selectRight() async {
+        await selectSideways(by: 1)
+    }
+
+    public func clearSelection() {
+        cursorPosition = nil
+    }
+
+    /// 選択中のリマインダーを完了 / 未完了にする。予定には何もしない。
+    public func toggleSelectedCompleted() async {
+        guard let item = selectedItem, item.kind == .reminder else { return }
+        await toggleCompleted(item)
+    }
+
+    private var cursor: TimelineCursor {
+        TimelineCursor(days: days, overdue: timeline.overdue, allDaySpans: allDaySpans, columns: columns)
+    }
+
+    private func startPosition(at edge: TimelineCursor.Edge) -> TimelineCursor.Position? {
+        cursor.start(on: containsToday ? calendar.startOfDay(for: now()) : nil, at: edge)
+    }
+
+    private func movedVertically(by step: Int) -> TimelineCursor.Position? {
+        guard let cursorPosition else { return startPosition(at: step > 0 ? .first : .last) }
+        return cursor.vertical(from: cursorPosition, by: step) ?? cursorPosition
+    }
+
+    private func selectSideways(by step: Int) async {
+        guard mode == .week else {
+            await showAdjacent(by: step)
+            return
+        }
+        guard let cursorPosition else {
+            cursorPosition = startPosition(at: .first)
+            return
+        }
+        let cursor = cursor
+        if let next = cursor.horizontal(from: cursorPosition, by: step) {
+            self.cursorPosition = next
+            return
+        }
+        // その方向に項目が無い。隣の週へ移り、来た側の端から近い時刻の項目を選ぶ
+        let minute = cursor.startMinute(of: cursorPosition)
+        await showAdjacent(by: step)
+        guard isLoadedForRange else { return }
+        self.cursorPosition = self.cursor.enter(by: step, nearMinute: minute)
+    }
+
+    private func showAdjacent(by step: Int) async {
+        if step < 0 {
+            await showPrevious()
+        } else {
+            await showNext()
+        }
+    }
+
     private func isChangeable(_ item: TimelineItem) -> Bool {
         !item.isVirtual && item.isEditable
     }
@@ -292,5 +373,7 @@ public final class TimelineModel {
         let days = days
         columns = TimelineColumns.columns(for: timeline.timed, days: days, calendar: calendar)
         allDaySpans = TimelineColumns.allDaySpans(for: timeline.allDay, days: days, calendar: calendar)
+        // 読み直しや表示範囲の変更で画面から消えた項目は、選択から外す
+        cursorPosition = cursorPosition.flatMap(cursor.resolve)
     }
 }

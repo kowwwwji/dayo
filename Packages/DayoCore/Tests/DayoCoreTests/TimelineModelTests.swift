@@ -786,3 +786,303 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(ItemDraft(moving: reminder, to: start).end == nil)
     }
 }
+
+@MainActor
+@Suite struct TimelineModelSelectionTests {
+    /// 2026-11-10 は火曜。週（日曜始まり）は 11-08 〜 11-14。
+    let today = iso("2026-11-10T00:00:00Z")
+    let weekStart = iso("2026-11-08T00:00:00Z")
+    let nextWeekStart = iso("2026-11-15T00:00:00Z")
+    let previousWeekStart = iso("2026-11-01T00:00:00Z")
+
+    private func day(_ dayOfMonth: Int) -> Date {
+        iso("2026-11-\(String(format: "%02d", dayOfMonth))T00:00:00Z")
+    }
+
+    private func event(_ id: String, _ start: String) -> TimelineItem {
+        let start = iso(start)
+        return TimelineItem(
+            id: id, calendarItemIdentifier: id, kind: .event, title: id, start: start,
+            end: start.addingTimeInterval(3600), isAllDay: false, isCompleted: false, sourceName: "",
+            accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false
+        )
+    }
+
+    private func grid(_ id: String, _ dayOfMonth: Int) -> TimelineSelection {
+        TimelineSelection(itemID: id, place: .grid(day: day(dayOfMonth)))
+    }
+
+    private func loaded(
+        _ items: [TimelineItem], overdue: [TimelineItem] = [], mode: TimelineMode = .week,
+        source: FakeSource = FakeSource()
+    ) async -> (TimelineModel, FakeSource) {
+        source.snapshots[mode == .week ? weekStart : today] = TimelineSnapshot(items: items, overdue: overdue)
+        let model = TimelineModel(source: source, calendar: utc, mode: mode) { self.today }
+        await model.activate()
+        return (model, source)
+    }
+
+    @Test func nothingIsSelectedAtFirst() async {
+        let (model, _) = await loaded([item("a", start: iso("2026-11-10T09:00:00Z"))])
+        #expect(model.selection == nil)
+        #expect(model.selectedItem == nil)
+    }
+
+    @Test func nextWithoutASelectionPicksTheFirstItemOfToday() async {
+        let (model, _) = await loaded([
+            event("mon", "2026-11-09T09:00:00Z"),
+            event("a", "2026-11-10T09:00:00Z"),
+            event("b", "2026-11-10T12:00:00Z"),
+        ])
+
+        model.selectNext()
+
+        #expect(model.selection == grid("a", 10))
+        #expect(model.selectedItem?.id == "a")
+    }
+
+    @Test func previousWithoutASelectionPicksTheLastItemOfToday() async {
+        let (model, _) = await loaded([
+            item("a", start: iso("2026-11-10T09:00:00Z")),
+            item("b", start: iso("2026-11-10T12:00:00Z")),
+            item("wed", start: iso("2026-11-11T09:00:00Z")),
+        ])
+
+        model.selectPrevious()
+
+        #expect(model.selection == grid("b", 10))
+    }
+
+    @Test func withoutTodayOnScreenTheFirstDayIsUsed() async {
+        let source = FakeSource()
+        source.snapshots[nextWeekStart] = TimelineSnapshot(
+            items: [item("next", start: iso("2026-11-17T09:00:00Z"))], overdue: []
+        )
+        let (model, _) = await loaded([], source: source)
+        await model.showNext()
+
+        model.selectNext()
+
+        #expect(model.selection == grid("next", 17))
+    }
+
+    @Test func nextAndPreviousWalkTheColumnAndStopAtItsEnds() async {
+        let old = item("old", start: iso("2026-11-01T09:00:00Z"))
+        let (model, _) = await loaded([
+            item("a", start: iso("2026-11-10T09:00:00Z")),
+            item("b", start: iso("2026-11-10T12:00:00Z")),
+        ], overdue: [old])
+
+        model.selectNext()
+        #expect(model.selection == TimelineSelection(itemID: "old", place: .overdue))
+        model.selectNext()
+        model.selectNext()
+        #expect(model.selection == grid("b", 10))
+        model.selectNext()
+        #expect(model.selection == grid("b", 10))
+        model.selectPrevious()
+        model.selectPrevious()
+        model.selectPrevious()
+        #expect(model.selection == TimelineSelection(itemID: "old", place: .overdue))
+    }
+
+    @Test func virtualOccurrencesAreSkipped() async {
+        let source = FakeSource()
+        let pill = TimelineItem(
+            id: "薬", calendarItemIdentifier: "薬", kind: .reminder, title: "薬",
+            start: iso("2026-11-10T21:00:00Z"), end: nil, isAllDay: false, isCompleted: false, sourceName: "",
+            accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: RecurrenceSpec(frequency: .daily),
+            isShared: false
+        )
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [pill, event("fri", "2026-11-13T09:00:00Z")], overdue: [], recurring: [pill]
+        )
+        let model = TimelineModel(source: source, calendar: utc, mode: .week) { self.today }
+        await model.activate()
+
+        model.selectNext()
+        #expect(model.selection == grid("薬", 10))
+        await model.selectRight()
+
+        // 水・木には薬の将来回（仮想）しか無いので飛ばす
+        #expect(model.selection == grid("fri", 13))
+    }
+
+    @Test func clearSelectionDeselects() async {
+        let (model, _) = await loaded([item("a", start: iso("2026-11-10T09:00:00Z"))])
+        model.selectNext()
+
+        model.clearSelection()
+
+        #expect(model.selection == nil)
+    }
+
+    @Test func theSelectionSurvivesAReloadWhileItsItemRemains() async {
+        let (model, source) = await loaded([
+            item("a", start: iso("2026-11-10T09:00:00Z")),
+            item("b", start: iso("2026-11-10T12:00:00Z")),
+        ])
+        model.selectNext()
+        model.selectNext()
+
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [item("b", start: iso("2026-11-10T13:00:00Z"))], overdue: []
+        )
+        await model.load()
+
+        #expect(model.selection == grid("b", 10))
+        #expect(model.selectedItem?.start == iso("2026-11-10T13:00:00Z"))
+    }
+
+    @Test func theSelectionIsClearedWhenItsItemDisappears() async {
+        let (model, source) = await loaded([item("a", start: iso("2026-11-10T09:00:00Z"))])
+        model.selectNext()
+
+        source.snapshots[weekStart] = .empty
+        await model.load()
+
+        #expect(model.selection == nil)
+    }
+
+    @Test func theSelectionIsClearedWhenItsItemMovesToAnotherDay() async {
+        let (model, source) = await loaded([item("a", start: iso("2026-11-10T09:00:00Z"))])
+        model.selectNext()
+
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [item("a", start: iso("2026-11-12T09:00:00Z"))], overdue: []
+        )
+        await model.load()
+
+        #expect(model.selection == nil)
+    }
+
+    @Test func switchingToDayKeepsTheSelectionOnlyIfTheItemIsStillShown() async {
+        let source = FakeSource()
+        let a = item("a", start: iso("2026-11-10T09:00:00Z"))
+        let fri = item("fri", start: iso("2026-11-13T09:00:00Z"))
+        source.snapshots[today] = TimelineSnapshot(items: [a], overdue: [])
+        let (model, _) = await loaded([a, fri], source: source)
+
+        model.selectNext()
+        await model.setMode(.day)
+        #expect(model.selection == grid("a", 10))
+
+        await model.setMode(.week)
+        await model.selectRight()
+        #expect(model.selection == grid("fri", 13))
+        await model.setMode(.day)
+        #expect(model.selection == nil)
+    }
+
+    @Test func movingToAnotherDayClearsTheSelection() async {
+        let (model, _) = await loaded([item("a", start: iso("2026-11-10T09:00:00Z"))], mode: .day)
+        model.selectNext()
+
+        await model.showNext()
+
+        #expect(model.selection == nil)
+    }
+
+    @Test func leftAndRightInDayModeShowTheNeighbouringDay() async {
+        let (model, _) = await loaded([item("a", start: iso("2026-11-10T09:00:00Z"))], mode: .day)
+        model.selectNext()
+
+        await model.selectRight()
+        #expect(model.day == day(11))
+        #expect(model.selection == nil)
+
+        await model.selectLeft()
+        await model.selectLeft()
+        #expect(model.day == day(9))
+    }
+
+    @Test func leftAndRightInWeekModeMoveBetweenDaysWithItems() async {
+        let (model, _) = await loaded([
+            event("mon", "2026-11-09T15:00:00Z"),
+            event("a", "2026-11-10T09:00:00Z"),
+            event("fri9", "2026-11-13T09:30:00Z"),
+            event("fri15", "2026-11-13T15:00:00Z"),
+        ])
+        model.selectNext()
+
+        await model.selectRight()
+        #expect(model.selection == grid("fri9", 13))
+        await model.selectLeft()
+        await model.selectLeft()
+        #expect(model.selection == grid("mon", 9))
+        #expect(model.day == today)
+    }
+
+    @Test func rightWithoutASelectionInWeekModeStartsLikeNext() async {
+        let (model, _) = await loaded([event("a", "2026-11-10T09:00:00Z"), event("fri", "2026-11-13T09:00:00Z")])
+
+        await model.selectRight()
+
+        #expect(model.selection == grid("a", 10))
+    }
+
+    @Test func rightAtTheLastDayWithItemsMovesToTheNextWeekAndSelectsTheNearestItemThere() async {
+        let source = FakeSource()
+        source.snapshots[nextWeekStart] = TimelineSnapshot(items: [
+            event("n8", "2026-11-16T08:00:00Z"),
+            event("n14", "2026-11-16T14:00:00Z"),
+            event("later", "2026-11-18T13:00:00Z"),
+        ], overdue: [])
+        let (model, _) = await loaded([event("fri", "2026-11-13T13:00:00Z")], source: source)
+        model.selectNext()
+        #expect(model.selection == grid("fri", 13))
+
+        await model.selectRight()
+
+        #expect(model.range.start == nextWeekStart)
+        #expect(model.selection == grid("n14", 16))
+    }
+
+    @Test func leftAtTheFirstDayWithItemsMovesToThePreviousWeekAndEntersFromItsEnd() async {
+        let source = FakeSource()
+        source.snapshots[previousWeekStart] = TimelineSnapshot(items: [
+            event("early", "2026-11-02T09:00:00Z"),
+            event("sat", "2026-11-07T09:00:00Z"),
+        ], overdue: [])
+        let (model, _) = await loaded([event("a", "2026-11-10T09:00:00Z")], source: source)
+        model.selectNext()
+
+        await model.selectLeft()
+
+        #expect(model.range.start == previousWeekStart)
+        #expect(model.selection == grid("sat", 7))
+    }
+
+    @Test func movingIntoAnEmptyWeekLeavesNothingSelected() async {
+        let (model, _) = await loaded([event("a", "2026-11-10T09:00:00Z")])
+        model.selectNext()
+
+        await model.selectRight()
+
+        #expect(model.range.start == nextWeekStart)
+        #expect(model.selection == nil)
+    }
+
+    @Test func togglingCompletesTheSelectedReminder() async {
+        let (model, source) = await loaded([item("todo", start: iso("2026-11-10T09:00:00Z"))])
+        model.selectNext()
+
+        await model.toggleSelectedCompleted()
+
+        #expect(source.completions.map(\.id) == ["todo"])
+        #expect(source.completions.map(\.completed) == [true])
+        #expect(model.selection == grid("todo", 10))
+    }
+
+    @Test func togglingDoesNothingForEventsOrWithoutASelection() async {
+        let (model, source) = await loaded([event("meeting", "2026-11-10T09:00:00Z")])
+        let requests = source.requests.count
+
+        await model.toggleSelectedCompleted()
+        model.selectNext()
+        await model.toggleSelectedCompleted()
+
+        #expect(source.completions.isEmpty)
+        #expect(source.requests.count == requests)
+    }
+}
