@@ -259,6 +259,16 @@ struct ItemEditorView: View {
                     #endif
             }
             .padding()
+            // メモのように return が改行になる入力欄からでも、⌘return で保存できるようにする。
+            // ボタン 1 つに付けられるショートカットは 1 つなので、見えないボタンで受ける
+            .background {
+                Button("") { trigger(.save) }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!model.item.isEditable || model.isSaving)
+                    .opacity(0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
         }
         // 開始を動かしたら長さを保って終了も動かす
         .onChange(of: model.start) { old, new in
