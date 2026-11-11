@@ -166,6 +166,9 @@ struct ItemEditorView: View {
                     #if os(macOS)
                     .datePickerStyle(.field)
                     #endif
+                    // アプリは日本語の地域化を持たないので、既定だと英語の書式（日付と時刻の間に「,」）になる。
+                    // 日本語の書式（2026/11/11 9:00）で出す
+                    .environment(\.locale, Locale(identifier: "ja_JP"))
                 }
                 if !isEvent {
                     Picker("優先度", selection: $model.priority) {
