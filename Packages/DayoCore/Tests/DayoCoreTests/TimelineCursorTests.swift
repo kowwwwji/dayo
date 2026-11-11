@@ -182,6 +182,23 @@ private func grid(_ dayOfMonth: Int) -> Place { .grid(day: day(dayOfMonth)) }
         #expect(empty.enter(by: 1, nearMinute: nil) == nil)
     }
 
+    @Test(arguments: [
+        // 時刻付きから来たら、その日の中で開始時刻の近い時刻付き
+        (10, 13 * 60, position("t14", grid(10), 10)),
+        (10, 8 * 60, position("t9", grid(10), 10)),
+        // 時刻が無ければ終日、終日も無ければ時刻付きの先頭
+        (10, nil, position("trip", .allDay, 10)),
+        (13, nil, position("f13", grid(13), 13)),
+        // 時刻付きが無い日は、時刻付きから来ても終日
+        (12, 9 * 60, position("trip", .allDay, 12)),
+        // ほかの日に項目があっても、その日が空なら選ばない
+        (9, 9 * 60, nil),
+        (14, nil, nil),
+    ] as [(Int, Int?, TimelineCursor.Position?)])
+    func entersASingleDay(dayOfMonth: Int, minute: Int?, expected: TimelineCursor.Position?) {
+        #expect(cursor().enter(on: day(dayOfMonth), nearMinute: minute) == expected)
+    }
+
     @Test func reportsTheStartMinuteOnlyForTimedSelections() {
         let cursor = cursor()
         #expect(cursor.startMinute(of: position("t14", grid(10), 10)) == 14 * 60)

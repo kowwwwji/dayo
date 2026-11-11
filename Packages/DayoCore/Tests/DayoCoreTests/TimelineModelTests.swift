@@ -1485,4 +1485,136 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(spans["travel"]?.firstColumn == 2)
         #expect(spans["travel"]?.columnSpan == 1)
     }
+
+    // MARK: - 左右の選択
+
+    private func event(_ id: String, _ start: String, editable: Bool = true) -> TimelineItem {
+        let start = iso(start)
+        return TimelineItem(
+            id: id, calendarItemIdentifier: id, kind: .event, title: id, start: start,
+            end: start.addingTimeInterval(3600), isAllDay: false, isCompleted: false, sourceName: "",
+            accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil, isShared: false,
+            isEditable: editable
+        )
+    }
+
+    private func grid(_ id: String, _ dayOfMonth: Int) -> TimelineSelection {
+        TimelineSelection(itemID: id, place: .grid(day: day(dayOfMonth)))
+    }
+
+    /// 今日（10 日）を左端にした 3 日表示。`later` は表示をずらしたあとの範囲（左端の日）ごとの内容。
+    private func loaded(
+        _ items: [TimelineItem], later: [Int: [TimelineItem]] = [:]
+    ) async -> (TimelineModel, FakeSource) {
+        let source = FakeSource()
+        source.snapshots[today] = TimelineSnapshot(items: items, overdue: [])
+        for (first, items) in later {
+            source.snapshots[day(first)] = TimelineSnapshot(items: items, overdue: [])
+        }
+        let model = makeModel(source) { self.today }
+        await model.activate()
+        return (model, source)
+    }
+
+    @Test func leftAndRightMoveBetweenTheDaysWithItems() async {
+        let (model, _) = await loaded([
+            event("a", "2026-11-10T09:00:00Z"),
+            event("c9", "2026-11-12T09:30:00Z"),
+            event("c15", "2026-11-12T15:00:00Z"),
+        ])
+        model.selectNext()
+
+        // 水曜は空なので飛ばす
+        await model.selectRight()
+        #expect(model.selection == grid("c9", 12))
+        await model.selectLeft()
+        #expect(model.selection == grid("a", 10))
+        #expect(model.day == today)
+    }
+
+    @Test func rightWithoutASelectionStartsLikeNext() async {
+        let (model, _) = await loaded([event("a", "2026-11-10T09:00:00Z"), event("c", "2026-11-12T09:00:00Z")])
+
+        await model.selectRight()
+
+        #expect(model.selection == grid("a", 10))
+        #expect(model.day == today)
+    }
+
+    @Test func rightAtTheLastDayShiftsByOneDayAndSelectsTheNearestItemOfTheNewDay() async {
+        let c = event("c", "2026-11-12T13:00:00Z")
+        let (model, _) = await loaded([c], later: [11: [
+            c, event("d8", "2026-11-13T08:00:00Z"), event("d14", "2026-11-13T14:00:00Z"),
+        ]])
+        model.selectNext()
+        #expect(model.selection == grid("c", 12))
+
+        await model.selectRight()
+
+        #expect(model.columns.map(\.day) == [day(11), day(12), day(13)])
+        #expect(model.selection == grid("d14", 13))
+    }
+
+    @Test func leftAtTheFirstDayShiftsByOneDayAndSelectsTheItemOfTheNewDay() async {
+        let a = event("a", "2026-11-10T09:00:00Z")
+        let (model, _) = await loaded([a], later: [9: [event("m", "2026-11-09T15:00:00Z"), a]])
+        model.selectNext()
+
+        await model.selectLeft()
+
+        #expect(model.columns.map(\.day) == [day(9), today, day(11)])
+        #expect(model.selection == grid("m", 9))
+    }
+
+    @Test func theSelectionStaysWhenTheNewDayIsEmptyAndItsItemIsStillShown() async {
+        let b = event("b", "2026-11-11T09:00:00Z")
+        let (model, _) = await loaded([b], later: [11: [b]])
+        model.selectNext()
+
+        await model.selectRight()
+
+        #expect(model.columns.map(\.day) == [day(11), day(12), day(13)])
+        #expect(model.selection == grid("b", 11))
+    }
+
+    @Test func holdingRightReachesTheNextDayWithItems() async {
+        let (model, _) = await loaded(
+            [event("a", "2026-11-10T09:00:00Z")], later: [12: [event("e", "2026-11-14T09:00:00Z")]]
+        )
+        model.selectNext()
+
+        // 木曜は空。火曜の選択は画面の外へ出るので外れる
+        await model.selectRight()
+        #expect(model.columns.map(\.day) == [day(11), day(12), day(13)])
+        #expect(model.selection == nil)
+
+        // 選択が無く画面にも項目が無ければ、そのまま進んで新しい日の項目を選ぶ
+        await model.selectRight()
+        #expect(model.columns.map(\.day) == [day(12), day(13), day(14)])
+        #expect(model.selection == grid("e", 14))
+    }
+
+    @Test func movingTheSelectionByADayStopsAtTheEdgesOfTheThreeDays() async {
+        let (model, source) = await loaded([
+            event("a", "2026-11-10T09:00:00Z"),
+            event("c", "2026-11-12T09:00:00Z"),
+        ])
+        model.selectNext()
+        await model.moveSelectionByDay(-1, span: .thisOccurrence)
+        await model.selectRight()
+        #expect(model.selection == grid("c", 12))
+        await model.moveSelectionByDay(1, span: .thisOccurrence)
+
+        #expect(source.updates.isEmpty)
+        #expect(model.day == today)
+    }
+
+    @Test func movingTheSelectionByADayWorksInsideTheThreeDays() async {
+        let (model, source) = await loaded([event("a", "2026-11-10T09:00:00Z")])
+        model.selectNext()
+
+        await model.moveSelectionByDay(1, span: .thisOccurrence)
+
+        #expect(source.updates.map(\.draft.start) == [iso("2026-11-11T09:00:00Z")])
+    }
 }

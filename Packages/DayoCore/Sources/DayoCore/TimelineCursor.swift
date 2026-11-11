@@ -114,11 +114,16 @@ public struct TimelineCursor {
     /// 前後の週へ移ったあとの選択。来た側の端に近い、項目のある日から選ぶ。
     public func enter(by step: Int, nearMinute minute: Int?) -> Position? {
         for day in step > 0 ? days : days.reversed() {
-            if let found = pick(on: day, nearMinute: minute, excludingAllDay: nil) {
+            if let found = enter(on: day, nearMinute: minute) {
                 return found
             }
         }
         return nil
+    }
+
+    /// その日の列だけから選ぶ。その日に項目が無ければ nil。
+    public func enter(on day: Date, nearMinute minute: Int?) -> Position? {
+        pick(on: day, nearMinute: minute, excludingAllDay: nil)
     }
 
     /// 読み直しや表示範囲の変更のあとも選択が画面に残っているかを確かめる。残っていなければ nil。

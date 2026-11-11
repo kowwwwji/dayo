@@ -209,12 +209,12 @@ public final class TimelineModel {
         cursorPosition = movedVertically(by: -1)
     }
 
-    /// 週表示では左隣の、項目のある日の列へ。無ければ前の週へ移る。日表示では前の日へ。
+    /// 列が複数なら左隣の、項目のある日の列へ。無ければ前の週へ移る（3 日表示は 1 日ずれる）。日表示では前の日へ。
     public func selectLeft() async {
         await selectSideways(by: -1)
     }
 
-    /// 週表示では右隣の、項目のある日の列へ。無ければ次の週へ移る。日表示では次の日へ。
+    /// 列が複数なら右隣の、項目のある日の列へ。無ければ次の週へ移る（3 日表示は 1 日ずれる）。日表示では次の日へ。
     public func selectRight() async {
         await selectSideways(by: 1)
     }
@@ -323,24 +323,38 @@ public final class TimelineModel {
     }
 
     private func selectSideways(by step: Int) async {
-        guard mode == .week else {
+        guard mode != .day else {
             await showAdjacent(by: step)
             return
         }
-        guard let cursorPosition else {
-            cursorPosition = startPosition(at: .first)
-            return
-        }
         let cursor = cursor
-        if let next = cursor.horizontal(from: cursorPosition, by: step) {
+        if let cursorPosition, let next = cursor.horizontal(from: cursorPosition, by: step) {
             self.cursorPosition = next
             return
         }
-        // その方向に項目が無い。隣の週へ移り、来た側の端から近い時刻の項目を選ぶ
-        let minute = cursor.startMinute(of: cursorPosition)
+        if cursorPosition == nil {
+            // 何も選択していなければ j と同じ起点から。3 日表示は、画面に項目が無ければそのまま表示を進める
+            // （端を越えて選択が外れたあとも、押し続ければ項目のある日まで届く）
+            if let start = startPosition(at: .first) {
+                cursorPosition = start
+                return
+            }
+            guard mode == .threeDays else { return }
+        }
+        // その方向に項目が無い。表示を進めて、元の開始時刻に近い項目を選ぶ
+        let minute = cursorPosition.flatMap(cursor.startMinute)
         await showAdjacent(by: step)
         guard isLoadedForRange else { return }
-        self.cursorPosition = self.cursor.enter(by: step, nearMinute: minute)
+        if mode == .threeDays {
+            // 1 日ずれるだけなので、新しく見えた日だけを見る。そこが空なら、画面に残っている選択はそのまま
+            if let day = step > 0 ? days.last : days.first,
+               let entered = self.cursor.enter(on: day, nearMinute: minute) {
+                cursorPosition = entered
+            }
+        } else {
+            // 隣の週へ移った。来た側の端から探す
+            cursorPosition = self.cursor.enter(by: step, nearMinute: minute)
+        }
     }
 
     private func showAdjacent(by step: Int) async {
