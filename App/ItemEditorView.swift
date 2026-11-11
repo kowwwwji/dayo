@@ -327,8 +327,6 @@ struct ItemEditorView: View {
         .confirmationDialog("「\(model.item.title)」を削除しますか？", isPresented: $confirmsDelete, titleVisibility: .visible) {
             Button("削除", role: .destructive) { run(.delete, span: .thisOccurrence) }
             Button("キャンセル", role: .cancel) {}
-        } message: {
-            Text("純正アプリと共有相手からも消えます。")
         }
         #if os(macOS)
         .frame(width: 380, height: 480)

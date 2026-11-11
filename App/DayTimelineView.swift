@@ -129,10 +129,10 @@ struct DayTimelineView: View {
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
         let alert = NSAlert()
         alert.messageText = "「\(item.title)」を削除しますか？"
-        alert.informativeText = "純正アプリと共有相手からも消えます。"
         let delete = alert.addButton(withTitle: "削除")
-        // 消す操作だと分かるよう赤く塗る（破壊的操作の役割を付けると既定のボタンとして描かれなくなるので、色だけ変える）
-        delete.bezelColor = .systemRed
+        // 消す操作だと分かるよう赤で出す。既定のボタンは色の指定を受け付けないので、OS の「破壊的操作」の見た目に任せる
+        // （return は最初のボタンに割り当てられたままなので、削除として効く）
+        delete.hasDestructiveAction = true
         let cancel = alert.addButton(withTitle: "キャンセル")
         cancel.keyEquivalent = "\u{1b}"
         alert.window.initialFirstResponder = delete
