@@ -276,6 +276,22 @@ private func item(
         #expect(model.draft.location == "会議室 A")
     }
 
+    @Test(arguments: [
+        ("牧ノ戸峠, 日本、〒879-4911 大分県玖珠郡九重町田野 牧ノ戸峠", "牧ノ戸峠", "日本、〒879-4911 大分県玖珠郡九重町田野 牧ノ戸峠"),
+        ("A, B, C", "A", "B, C"),
+        ("会議室 A", "会議室 A", ""),
+        ("会議室 A,", "会議室 A", ""),
+        (", B", ", B", ""),
+    ])
+    func theLocationSplitsAtItsFirstComma(location: String, name: String, rest: String) {
+        var meeting = item(kind: .event, start: date(2026, 11, 12, 10), end: date(2026, 11, 12, 11))
+        meeting.location = location
+        let model = ItemEditorModel(item: meeting, source: EditingSource(), calendar: tokyo)
+
+        #expect(model.locationName == name)
+        #expect(model.locationDetail == rest)
+    }
+
     @Test func theLocationOpensAsAGoogleMapsSearch() {
         var meeting = item(kind: .event, start: date(2026, 11, 12, 10), end: date(2026, 11, 12, 11))
         meeting.location = "東京駅 丸の内口&q=x"

@@ -30,6 +30,17 @@ public final class ItemEditorModel {
     public var notes: String
     /// event のみ。場所。ここでは直さず、地図を開くためだけに出す（保存時は元のまま）。
     public var location: String { item.location?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
+    /// 場所の最初の「,」より前（多くは施設の名前）。「,」が無い、または前後どちらかが空なら場所の全体。
+    public var locationName: String { locationParts.name }
+    /// 場所の最初の「,」より後ろ（多くは住所）。分けられなければ空。
+    public var locationDetail: String { locationParts.detail }
+    private var locationParts: (name: String, detail: String) {
+        guard let comma = location.firstIndex(of: ",") else { return (location, "") }
+        let name = location[..<comma].trimmingCharacters(in: .whitespaces)
+        let detail = location[location.index(after: comma)...].trimmingCharacters(in: .whitespaces)
+        if name.isEmpty { return (location, "") }
+        return (name, detail)
+    }
     /// 場所を Google マップで検索する URL。場所が空なら nil。
     public var locationMapURL: URL? {
         guard !location.isEmpty else { return nil }

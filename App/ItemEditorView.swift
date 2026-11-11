@@ -152,13 +152,27 @@ struct ItemEditorView: View {
                     .onSubmit { if model.isNew { trigger(.save) } }
                 // 場所とビデオ会議は見るだけ。押すとブラウザで開く（直すのは純正カレンダーに任せる）
                 if let url = model.locationMapURL {
-                    LabeledContent("場所") {
+                    // 長い住所でも「場所」の横に収める。1 行に入らなければ、最初の「,」までを 1 行目、残りを 2 行目にする
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text("場所")
+                        Spacer(minLength: 0)
                         Link(destination: url) {
-                            Label(model.location, systemImage: "map")
-                                .lineLimit(2)
-                                .multilineTextAlignment(.trailing)
+                            ViewThatFits(in: .horizontal) {
+                                Text(model.location)
+                                    .lineLimit(1)
+                                    .fixedSize()
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text(model.locationName)
+                                    if !model.locationDetail.isEmpty {
+                                        Text(model.locationDetail)
+                                    }
+                                }
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            }
                         }
-                        .help("Google マップで開く")
+                        .help(model.location)
+                        .accessibilityLabel("\(model.location) を Google マップで開く")
                     }
                 }
                 // Google カレンダーがメモに足すビデオ会議の案内は、メモ欄には出さずリンクにする
