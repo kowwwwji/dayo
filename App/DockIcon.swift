@@ -29,13 +29,10 @@ enum DockIcon {
     // 台紙（scripts/make-icon.swift の `--blank`）の、帯の下の余白の中心の高さ（下端からの割合）
     private static let bodyCenter: CGFloat = 1 - 612.0 / 1024
 }
-#endif
 
 extension View {
-    /// Mac では、このビューが出ている間 Dock のアイコンを今日の日付に保つ。iPhone では何もしない（アイコンを描き替えられない）。
-    @ViewBuilder
+    /// このビューが出ている間、Dock のアイコンを今日の日付に保つ。
     func showsTodayInDock() -> some View {
-        #if os(macOS)
         self
             .task { DockIcon.update() }
             .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
@@ -46,8 +43,6 @@ extension View {
             ) { _ in
                 DockIcon.update()
             }
-        #else
-        self
-        #endif
     }
 }
+#endif

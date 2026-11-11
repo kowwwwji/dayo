@@ -57,7 +57,6 @@ struct DayoApp: App {
                 makeEditor: makeEditor(for:),
                 makeNewEditor: makeNewEditor(start:isAllDay:)
             )
-            .showsTodayInDock()
         }
         #if os(macOS)
         .commands {
