@@ -199,7 +199,7 @@ struct ItemEditorView: View {
                         // （Shift+Tab は配列によって別の文字で届くので、両方を受けて修飾キーで見分ける）
                         .onKeyPress(keys: [.tab, Self.backtab]) { press in
                             if press.modifiers.contains(.shift) || press.key == Self.backtab {
-                                NSApp.keyWindow?.selectPreviousKeyView(nil)
+                                Self.focusBeforeNotes()
                             } else {
                                 saveFocused = true
                             }
@@ -286,6 +286,32 @@ struct ItemEditorView: View {
     #if os(macOS)
     /// Shift+Tab で届く文字（AppKit の back tab）。
     private static let backtab = KeyEquivalent("\u{19}")
+
+    /// メモのすぐ上にある、フォーカスを受けられる欄へ戻す。
+    /// AppKit の「前のキービュー」は使えない（メモ自身を包むビューや下のボタンを返し、画面の並びと合わない）。
+    /// どの欄がフォーカスを受けるかは期日の有無やキーボード操作の設定で変わるので、並びを自前で持たず、画面上の位置から探す。
+    private static func focusBeforeNotes() {
+        guard let window = NSApp.keyWindow, let notes = window.firstResponder as? NSView,
+              let root = window.contentView?.superview ?? window.contentView
+        else { return }
+        // ウインドウの座標は上が大きい
+        let top = notes.convert(notes.bounds, to: nil).maxY
+        var nearest: (view: NSView, frame: CGRect)?
+        func visit(_ view: NSView) {
+            guard !view.isHidden else { return }
+            let frame = view.convert(view.bounds, to: nil)
+            if view.canBecomeKeyView, !notes.isDescendant(of: view), frame.minY >= top - 1 {
+                if let found = nearest?.frame {
+                    if (frame.minY, -frame.maxX) < (found.minY, -found.maxX) { nearest = (view, frame) }
+                } else {
+                    nearest = (view, frame)
+                }
+            }
+            view.subviews.forEach(visit)
+        }
+        visit(root)
+        if let nearest { window.makeFirstResponder(nearest.view) }
+    }
     #endif
 
     private var dateComponents: DatePickerComponents {
