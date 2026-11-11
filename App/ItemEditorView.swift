@@ -390,7 +390,15 @@ struct ItemEditorView: View {
     /// 繰り返しの予定なら範囲を聞く。削除の確認は出さない（すぐには消さず、取り消せる間を置くため）。
     private func trigger(_ action: PendingAction) {
         if model.needsSpanChoice {
+            #if os(macOS)
+            // Mac は「この回のみ」に枠を置けるダイアログで聞く（タイムラインでの確認と同じもの）
+            let message = action == .delete ? "どの回を削除しますか？" : "どの回に変更を適用しますか？"
+            if let span = SpanAlert.ask(message: message) {
+                run(action, span: span)
+            }
+            #else
             pendingAction = action
+            #endif
         } else {
             run(action, span: .thisOccurrence)
         }
