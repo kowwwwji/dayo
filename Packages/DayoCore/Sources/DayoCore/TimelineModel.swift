@@ -453,12 +453,10 @@ public final class TimelineModel {
         }
     }
 
-    private func showAdjacent(by step: Int) async {
-        if step < 0 {
-            await showPrevious()
-        } else {
-            await showNext()
-        }
+    /// 隣へ 1 つだけずらす（週表示は 1 週、それ以外は 1 日）。選択や項目を追って表示を動かすときに使う。
+    /// 3 日表示の `showPrevious` / `showNext` は 3 日ぶん動くので、ここでは使わない。
+    func showAdjacent(by step: Int) async {
+        await show(day: calendar.date(byAdding: stepComponent, value: step < 0 ? -1 : 1, to: day))
     }
 
     private func isChangeable(_ item: TimelineItem) -> Bool {
@@ -503,14 +501,14 @@ public final class TimelineModel {
         await load()
     }
 
-    /// 前の日、週表示なら前の週へ。3 日表示も 1 日ずつ動く。
+    /// 前の日、週表示なら前の週、3 日表示なら前の 3 日へ。
     public func showPrevious() async {
-        await show(day: calendar.date(byAdding: stepComponent, value: -1, to: day))
+        await show(day: calendar.date(byAdding: stepComponent, value: -pageLength, to: day))
     }
 
-    /// 次の日、週表示なら次の週へ。3 日表示も 1 日ずつ動く。
+    /// 次の日、週表示なら次の週、3 日表示なら次の 3 日へ。
     public func showNext() async {
-        await show(day: calendar.date(byAdding: stepComponent, value: 1, to: day))
+        await show(day: calendar.date(byAdding: stepComponent, value: pageLength, to: day))
     }
 
     public func showToday() async {
@@ -546,6 +544,8 @@ public final class TimelineModel {
     }
 
     private var stepComponent: Calendar.Component { mode == .week ? .weekOfYear : .day }
+    /// 前後へ移るときに動く量（`stepComponent` の個数）。見えている範囲がまるごと入れ替わるだけ動く。
+    private var pageLength: Int { mode == .threeDays ? 3 : 1 }
 
     /// 表示が今日に合っているか（「今日」で動く先と同じか）。3 日表示は今日が左端のときだけ。
     /// 今日が途中にある並びは自分でずらしたものなので、日付が変わっても動かさない。

@@ -30,8 +30,14 @@ struct DayNavigationControls: View {
     /// 「更新中」を出しているか。変更がすぐ届いても押したことが分かるよう、少しのあいだ残す
     @State private var showsRefreshing = false
 
-    /// 前後に動く単位。3 日表示も 1 日ずつ動く。
-    private var unit: String { model.mode == .week ? "週" : "日" }
+    /// 前後に動く単位（ボタンの読み上げ用）。
+    private var unit: String {
+        switch model.mode {
+        case .day: "日"
+        case .threeDays: "3日"
+        case .week: "週"
+        }
+    }
 
     var body: some View {
         HStack(spacing: 6) {
