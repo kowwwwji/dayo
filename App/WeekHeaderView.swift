@@ -3,11 +3,9 @@ import DayoCore
 import SwiftUI
 
 /// 曜日と日付の行。今日は赤丸で示す。日表示では 1 日分、3 日・週表示では列の数だけ並べる。
-/// 左右の余白をグリッドと同じにして、各日を列の中に置く。
+/// 左右の余白をグリッドと同じにして、各日を列の中央に置く。
 struct DayLabelsRow: View {
     let days: [Date]
-    /// 列の中での寄せ方。
-    var alignment: Alignment = .center
 
     @State private var now = Date.now
     private let clock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -28,7 +26,7 @@ struct DayLabelsRow: View {
                         }
                 }
                 .font(.dayoSmall.monospacedDigit())
-                .frame(maxWidth: .infinity, alignment: alignment)
+                .frame(maxWidth: .infinity)
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(isToday ? .isSelected : [])
             }

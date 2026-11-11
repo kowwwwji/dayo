@@ -202,8 +202,8 @@ struct DayTimelineView: View {
                     onMakeTimed: makeTimed
                 )
             } else {
-                // 日表示にも 3 日・週と同じ曜日と日付を出す。列が 1 つなので、中央ではなく終日欄や予定と同じ左端に寄せる
-                DayLabelsRow(days: model.columns.map(\.day), alignment: .leading)
+                // 日表示にも 3 日・週と同じ曜日と日付を出す。終日欄との間隔は `WeekHeaderView` の上の余白に合わせる
+                DayLabelsRow(days: model.columns.map(\.day))
                     .padding(.top, 6)
                 dayAllDay
             }
