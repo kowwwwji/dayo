@@ -16,6 +16,10 @@ enum TimelineKey {
     case showPrevious
     case showNext
     case toggleHelp
+    case moveLater
+    case moveEarlier
+    case moveToPreviousDay
+    case moveToNextDay
 
     /// キーを押し続けたときに繰り返すか。選択の移動だけ繰り返す。
     /// 完了の切替は保存が終わる前に次が来ると同じ状態を二重に書き込むので、繰り返さない。
@@ -42,8 +46,20 @@ enum TimelineKey {
             }
             return
         }
+        // Shift を押すと大文字で届くので、小文字に揃えて比べる（Caps Lock でも同じキーとして扱う）
+        let character = event.charactersIgnoringModifiers?.lowercased()
+        if modifiers == .shift {
+            switch character {
+            case "j": self = .moveLater
+            case "k": self = .moveEarlier
+            case "h": self = .moveToPreviousDay
+            case "l": self = .moveToNextDay
+            default: return nil
+            }
+            return
+        }
         guard modifiers.isEmpty else { return nil }
-        switch event.charactersIgnoringModifiers {
+        switch character {
         case "j": self = .selectNext
         case "k": self = .selectPrevious
         case "h": self = .selectLeft
@@ -168,6 +184,8 @@ struct KeyHelpView: View {
     private static let rows: [(keys: String, action: String)] = [
         ("j / k", "下 / 上の項目を選ぶ"),
         ("h / l", "週: 隣の日の列へ　日: 前 / 次の日へ"),
+        ("⇧J / ⇧K", "選択中の項目を 15 分遅く / 早く"),
+        ("⇧H / ⇧L", "選択中の項目を前 / 次の日へ（週表示）"),
         ("Space", "選択中のリマインダーを完了 / 未完了"),
         ("Return", "選択中の項目の編集を開く"),
         ("Esc", "選択を解除（入力欄では入力欄を抜ける）"),

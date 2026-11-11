@@ -81,6 +81,10 @@ struct DayTimelineView: View {
             guard let selection = model.selection, let item = model.selectedItem else { return false }
             editing.open(item, at: selection.place.editorAnchor)
         case .toggleHelp: showsKeyHelp.toggle()
+        case .moveLater: moveSelection { await model.moveSelectionInTime(1, span: $0) }
+        case .moveEarlier: moveSelection { await model.moveSelectionInTime(-1, span: $0) }
+        case .moveToPreviousDay: moveSelection { await model.moveSelectionByDay(-1, span: $0) }
+        case .moveToNextDay: moveSelection { await model.moveSelectionByDay(1, span: $0) }
         case .clearSelection:
             // 一覧が出ていれば、まずそれを閉じる
             if showsKeyHelp {
@@ -91,6 +95,12 @@ struct DayTimelineView: View {
             model.clearSelection()
         }
         return true
+    }
+
+    /// 選択中の項目をキーで動かす。ドラッグと同じく、繰り返しの予定は先に範囲を聞く。
+    private func moveSelection(_ perform: @escaping (EditSpan) async -> Void) {
+        guard let item = model.selectedItem else { return }
+        change(item, perform)
     }
     #endif
 
