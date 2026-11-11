@@ -156,7 +156,7 @@ struct DayTimelineView: View {
                     scrollTarget: model.selection?.place == .overdue ? model.selection?.itemID : nil
                 ) {
                     ForEach(model.timeline.overdue) { item in
-                        row(item, isOverdue: true).id(item.id)
+                        overdueRow(item).id(item.id)
                     }
                 }
                 Divider()
@@ -281,13 +281,13 @@ struct DayTimelineView: View {
         }
     }
 
-    private func row(_ item: TimelineItem, isOverdue: Bool = false) -> some View {
+    /// 期限切れ欄の 1 行。
+    private func overdueRow(_ item: TimelineItem) -> some View {
         TimelineRow(
             item: item,
-            isOverdue: isOverdue,
             editing: editing,
-            anchor: isOverdue ? TimelineSelection.Place.overdue.editorAnchor : nil,
-            isSelected: isOverdue && model.selection == TimelineSelection(itemID: item.id, place: .overdue)
+            anchor: TimelineSelection.Place.overdue.editorAnchor,
+            isSelected: model.selection == TimelineSelection(itemID: item.id, place: .overdue)
         ) {
             Task { await model.toggleCompleted(item) }
         }

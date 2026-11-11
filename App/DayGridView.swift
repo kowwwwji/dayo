@@ -497,13 +497,16 @@ private struct GridItemView: View {
             .onEditGesture { editing.open(item, at: anchor) }
             .itemEditor(for: item, editing, at: anchor)
         case .reminder:
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+            // 余白は外に付けず中身の側に持たせる。丸以外の全面でダブルクリックを受けるため
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
                 Button(action: onToggle) {
                     Image(systemName: item.isVirtual ? "circle.dotted" : item.isCompleted ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(color)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(item.isVirtual ? "今後の回" : item.isCompleted ? "未完了に戻す" : "完了にする")
+                .padding(.leading, 5)
+                .padding(.vertical, 2)
                 HStack(spacing: 4) {
                     PriorityMark(priority: item.priority)
                         .font(.dayoTitle)
@@ -515,12 +518,14 @@ private struct GridItemView: View {
                     EarlyReminderMark(minutes: item.earlyReminderMinutes)
                     Spacer(minLength: 0)
                 }
+                .padding(.leading, 6)
+                .padding(.trailing, 5)
+                .padding(.vertical, 2)
+                .frame(maxHeight: .infinity, alignment: .top)
                 // チェックの丸は外す。そこでのダブルクリックは完了の切替が 2 回走るだけにする
                 .contentShape(Rectangle())
                 .onNewItemGesture(perform: onNewItem)
             }
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
             .contentShape(Rectangle())

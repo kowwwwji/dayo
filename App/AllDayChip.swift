@@ -32,17 +32,16 @@ struct AllDayChip: View {
     private var color: Color { Color(cgColor: item.color) }
 
     var body: some View {
-        HStack(spacing: 5) {
-            switch item.kind {
-            case .event:
-                EmptyView()
-            case .reminder:
+        // 余白は外に付けず中身の側に持たせる。丸以外の全面でダブルクリックを受けるため
+        HStack(spacing: 0) {
+            if item.kind == .reminder {
                 Button(action: onToggle) {
                     Image(systemName: item.isVirtual ? "circle.dotted" : item.isCompleted ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(color)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(item.isVirtual ? "今後の回" : item.isCompleted ? "未完了に戻す" : "完了にする")
+                .padding(.leading, 7)
             }
             // チェックの丸以外。ダブルクリックでの登録はここで受ける（丸の上では完了の切替が 2 回走るだけにする）
             HStack(spacing: 5) {
@@ -60,6 +59,9 @@ struct AllDayChip: View {
                     .foregroundStyle(item.isCompleted ? .secondary : .primary)
                 EarlyReminderMark(minutes: item.earlyReminderMinutes)
             }
+            .padding(.leading, item.kind == .reminder ? 5 : 7)
+            .padding(.trailing, 7)
+            .padding(.vertical, 4)
             .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
             .contentShape(Rectangle())
             #if os(macOS)
@@ -68,8 +70,6 @@ struct AllDayChip: View {
             )
             #endif
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 4)
         .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
         .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
         .coordinateSpace(name: Self.space)

@@ -5,7 +5,6 @@ import SwiftUI
 /// 日時とリスト名はタイトルの横に並べる。幅が足りなければタイトルのほうを省略する。
 struct TimelineRow: View {
     let item: TimelineItem
-    var isOverdue = false
     let editing: ItemEditing
     /// エディタを開く場所のキー。同じ項目をほかの場所（グリッドや終日欄）にも出す画面で、そちらと区別する。
     var anchor: String?
@@ -25,7 +24,7 @@ struct TimelineRow: View {
                 EarlyReminderMark(minutes: item.earlyReminderMinutes)
                 HStack(spacing: 6) {
                     if let time = timeText {
-                        Text(time).foregroundStyle(isOverdue ? .red : .secondary)
+                        Text(time).foregroundStyle(.red)
                     }
                     Text(item.sourceName).foregroundStyle(.tertiary)
                 }
@@ -61,17 +60,12 @@ struct TimelineRow: View {
         }
     }
 
+    /// 期日。期限切れは今日より前なので日付から書く。
     private var timeText: String? {
         guard let start = item.start else { return nil }
-        if isOverdue {
-            return item.isAllDay
-                ? start.formatted(.dateTime.month().day())
-                : start.formatted(.dateTime.month().day().hour().minute())
-        }
-        if item.isAllDay { return "終日" }
-        let startText = start.formatted(date: .omitted, time: .shortened)
-        guard let end = item.end else { return startText }
-        return "\(startText)–\(end.formatted(date: .omitted, time: .shortened))"
+        return item.isAllDay
+            ? start.formatted(.dateTime.month().day())
+            : start.formatted(.dateTime.month().day().hour().minute())
     }
 }
 

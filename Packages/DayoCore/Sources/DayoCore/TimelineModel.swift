@@ -288,6 +288,8 @@ public final class TimelineModel {
             return
         }
         await showAdjacent(by: direction)
+        // 保存の直後は変更通知の読み込みが割り込みやすい。追い越されたら読み直してから選ぶ
+        if !isLoadedForRange { await load() }
         guard isLoadedForRange else { return }
         cursorPosition = self.position(of: item, startingAt: draft.start, like: target)
     }

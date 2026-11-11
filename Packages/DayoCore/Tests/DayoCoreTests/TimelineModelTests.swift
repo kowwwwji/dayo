@@ -1213,6 +1213,38 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.selection == grid("sun", 7))
     }
 
+    @Test func theSelectionFollowsOutOfTheWeekEvenWhenAnotherLoadCutsIn() async {
+        let source = FakeSource()
+        source.snapshots[nextWeekStart] = TimelineSnapshot(
+            items: [make("sat", "2026-11-15T09:00:00Z")], overdue: []
+        )
+        let (model, _) = await loaded([make("sat", "2026-11-14T09:00:00Z")], source: source)
+        model.selectNext()
+        source.gate = true
+
+        // 保存の直後に来る変更通知の読み込みが、表示を進める読み込みを追い越す
+        let move = Task { await model.moveSelectionByDay(1, span: .thisOccurrence) }
+        await source.waitForPending(1)
+        let notified = Task { await model.load() }
+        await source.waitForPending(2)
+        source.release(at: 0)
+        // 追い越された側が読み直しても、どちらが先に終わっても、選択は付いていく。残りの読み込みは来た順に通す
+        var finished = false
+        let both = Task {
+            await move.value
+            await notified.value
+            finished = true
+        }
+        while !finished {
+            if source.pendingCount > 0 { source.release(at: 0) }
+            await Task.yield()
+        }
+        await both.value
+
+        #expect(model.range.start == nextWeekStart)
+        #expect(model.selection == grid("sat", 15))
+    }
+
     @Test func aFailedMoveOutOfTheWeekKeepsTheViewAndShowsTheError() async {
         let source = FakeSource()
         source.updateError = TestError()
