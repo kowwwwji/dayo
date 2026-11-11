@@ -28,8 +28,9 @@ struct DayGridView: View {
 
     private let hourHeight: CGFloat = 56
     private let collapsedHeight: CGFloat = 22
-    /// 時刻ラベルの列幅。上に固定する「終日」行のラベルも同じ幅にして揃える。
-    static let labelWidth: CGFloat = 48
+    /// 時刻ラベルの列幅。上に固定する「終日」「期限切れ」行のラベルも同じ幅にして揃える。
+    /// いちばん長い「期限切れ」が左端に付かない幅にする。
+    static let labelWidth: CGFloat = 56
     private var labelWidth: CGFloat { Self.labelWidth }
     static let trailingInset: CGFloat = 12
     private var trailingInset: CGFloat { Self.trailingInset }
