@@ -392,7 +392,8 @@ struct ItemEditorView: View {
         if model.needsSpanChoice {
             #if os(macOS)
             // Mac は「この回のみ」に枠を置けるダイアログで聞く（タイムラインでの確認と同じもの）
-            let message = action == .delete ? "どの回を削除しますか？" : "どの回に変更を適用しますか？"
+            let message = action == .delete
+                ? "「\(model.item.title)」のどの回を削除しますか？" : "どの回に変更を適用しますか？"
             if let span = SpanAlert.ask(message: message) {
                 run(action, span: span)
             }

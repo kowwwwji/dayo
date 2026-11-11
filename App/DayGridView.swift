@@ -218,13 +218,12 @@ struct DayGridView: View {
     private func ask(_ change: PendingChange) {
         pendingChange = change
         #if os(macOS)
-        let presented = SpanAlert.present(
+        SpanAlert.present(
             message: { if case .resize = change { "どの回の長さを変えますか？" } else { "どの回の日時を変えますか？" } }()
         ) { span in
             pendingChange = nil
             if let span { perform(change, span: span) }
         }
-        if !presented { pendingChange = nil }
         #endif
     }
 

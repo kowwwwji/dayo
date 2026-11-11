@@ -7,20 +7,17 @@ import DayoCore
 /// return は「この回のみ」に効く。枠と return の行き先を揃えるため、AppKit のダイアログで「この回のみ」に置く。
 @MainActor
 enum SpanAlert {
-    /// メインウインドウに付けて聞き、選んだ範囲を `completion` へ渡す。キャンセルなら nil。ウインドウが無ければ出さずに false を返す。
-    @discardableResult
-    static func present(message: String, completion: @escaping @MainActor (EditSpan?) -> Void) -> Bool {
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return false }
-        let (alert, monitor) = make(message: message)
-        alert.beginSheetModal(for: window) { response in
-            if let monitor { NSEvent.removeMonitor(monitor) }
-            completion(span(for: response))
+    /// 聞いて、選んだ範囲を `completion` へ渡す。キャンセルなら nil。
+    /// キー操作やドラッグの処理の途中から呼ばれるので、その処理を抜けてから出す。
+    static func present(message: String, completion: @escaping @MainActor (EditSpan?) -> Void) {
+        DispatchQueue.main.async {
+            completion(ask(message: message))
         }
-        return true
     }
 
-    /// 独立したダイアログで聞き、選んだ範囲を返す。キャンセルなら nil。
-    /// 詳細編集のポップオーバーから聞くときに使う（ポップオーバーにはシートを付けられないため）。
+    /// 聞いて、選んだ範囲を返す。キャンセルなら nil。
+    /// どこから聞いても同じ見た目になるよう、ウインドウに付けない独立したダイアログで出す
+    /// （詳細編集のポップオーバーにはシートを付けられないため、付ける形では揃えられない）。
     static func ask(message: String) -> EditSpan? {
         let (alert, monitor) = make(message: message)
         defer {
