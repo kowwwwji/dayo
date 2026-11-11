@@ -70,6 +70,19 @@ Meet の詳細: https://support.google.com/a/users/answer/9282720
         #expect(notes.combined(withBody: "前\n後") == "前\n\n\(block)\n後")
     }
 
+    @Test(arguments: [
+        "https://meet.google.com.example.com/abc",
+        "https://example.com/meet.google.com",
+        "http://meet.google.com/abc-defg-hij",
+    ])
+    func aBlockLeadingSomewhereElseStaysInTheNotes(link: String) {
+        let fake = "\(line)\nGoogle Meet に参加: \(link)\n\(line)"
+        let notes = ConferenceNotes("議題\n\n\(fake)")
+
+        #expect(notes.body == "議題\n\n\(fake)")
+        #expect(notes.url == nil)
+    }
+
     @Test func aSingleSeparatorLineIsNotABlock() {
         let notes = ConferenceNotes("前\n\(line)\n後")
 

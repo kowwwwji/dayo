@@ -26,11 +26,20 @@ public struct ConferenceNotes: Equatable {
             return
         }
         let blockText = lines[first...last].joined(separator: "\n")
+        // メモは招待した相手が自由に書ける。区切り線を真似たブロックに別の URL を入れられると、「参加」の裏に行き先が隠れてしまう。
+        // 行き先が知っている会議サービスのときだけ案内として扱い、それ以外はメモのまま見せる
+        guard let link = Self.firstURL(in: blockText), Self.isConferenceURL(link) else {
+            body = notes
+            url = nil
+            block = nil
+            tail = ""
+            return
+        }
         let head = Self.trimmed(lines[..<first].joined(separator: "\n"))
         tail = Self.trimmed(lines[(last + 1)...].joined(separator: "\n"))
         block = blockText
         body = [head, tail].filter { !$0.isEmpty }.joined(separator: "\n")
-        url = Self.firstURL(in: blockText)
+        url = link
     }
 
     /// 編集後の本文に案内を付け直した、保存用のメモ。本文を変えていなければ元のメモをそのまま返す。
@@ -56,6 +65,13 @@ public struct ConferenceNotes: Equatable {
 
     private static func trimmed(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// 案内として扱う行き先。https で、ホストが会議サービスのものに限る。
+    private static func isConferenceURL(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https", let host = url.host()?.lowercased() else { return false }
+        return host == "meet.google.com" || host == "zoom.us" || host.hasSuffix(".zoom.us")
+            || host == "teams.microsoft.com" || host == "teams.live.com"
     }
 
     private static func firstURL(in text: String) -> URL? {
