@@ -195,9 +195,14 @@ struct ItemEditorView: View {
                     TextEditor(text: $model.notes)
                         .frame(minHeight: 60)
                         #if os(macOS)
-                        // メモは最後の入力欄なので、Tab はタブ文字ではなく保存ボタンへ進む
-                        .onKeyPress(.tab) {
-                            saveFocused = true
+                        // メモは最後の入力欄なので、Tab はタブ文字ではなく保存ボタンへ進む。Shift+Tab は前の入力欄へ戻る
+                        // （Shift+Tab は配列によって別の文字で届くので、両方を受けて修飾キーで見分ける）
+                        .onKeyPress(keys: [.tab, Self.backtab]) { press in
+                            if press.modifiers.contains(.shift) || press.key == Self.backtab {
+                                NSApp.keyWindow?.selectPreviousKeyView(nil)
+                            } else {
+                                saveFocused = true
+                            }
                             return .handled
                         }
                         #endif
@@ -277,6 +282,11 @@ struct ItemEditorView: View {
             Text(pendingAction == .delete ? "どの回を削除しますか？" : "どの回に変更を適用しますか？")
         }
     }
+
+    #if os(macOS)
+    /// Shift+Tab で届く文字（AppKit の back tab）。
+    private static let backtab = KeyEquivalent("\u{19}")
+    #endif
 
     private var dateComponents: DatePickerComponents {
         model.isAllDay ? [.date] : [.date, .hourAndMinute]
