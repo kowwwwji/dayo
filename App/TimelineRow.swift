@@ -63,11 +63,11 @@ struct TimelineRow: View {
     }
 
     /// 期日。期限切れは今日より前なので日付から書く。
+    /// アプリは日本語の地域化を持たず、既定だと英語の書式（Nov 10 at 15:00）になるので、日本語の書式（11/10 15:00）を指定する。
     private var timeText: String? {
         guard let start = item.start else { return nil }
-        return item.isAllDay
-            ? start.formatted(.dateTime.month().day())
-            : start.formatted(.dateTime.month().day().hour().minute())
+        let style = Date.FormatStyle(locale: Locale(identifier: "ja_JP")).month(.defaultDigits).day()
+        return start.formatted(item.isAllDay ? style : style.hour().minute())
     }
 }
 
