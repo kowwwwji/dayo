@@ -14,6 +14,8 @@ struct GridMove {
 /// 設定した表示時間帯の外に何も無ければ、その時間帯は帯に畳む（クリックで開く）。
 struct DayGridView: View {
     let columns: [TimelineColumn]
+    /// キー操作で選択中の項目
+    var selection: TimelineSelection?
     /// 表示中の範囲の内容が読み込み済みか。帯の有無が確定してから初期位置へスクロールする
     let isLoaded: Bool
     let editing: ItemEditing
@@ -86,6 +88,7 @@ struct DayGridView: View {
             ScrollView {
                 ZStack(alignment: .topLeading) {
                     scrollAnchors(axis)
+                    selectionAnchor(axis)
                     hourLines(axis)
                     daySeparators
                     GeometryReader { geometry in
@@ -121,6 +124,10 @@ struct DayGridView: View {
                 if loaded { scrollToStart(proxy) }
             }
             .onReceive(clock) { now = $0 }
+            // 選択した項目が画面の外なら、見えるところまでだけ動かす
+            .onChange(of: selection) { _, _ in
+                if selectedPlacement != nil { proxy.scrollTo(Self.selectionID) }
+            }
             .confirmationDialog(
                 "繰り返しの予定です",
                 isPresented: Binding(get: { pendingMove != nil }, set: { if !$0 { pendingMove = nil } }),
@@ -204,6 +211,24 @@ struct DayGridView: View {
                 .frame(height: 1)
                 .alignmentGuide(.top) { _ in -axis.y(forMinute: hour * 60) }
                 .id(Self.hourID(hour))
+        }
+    }
+
+    /// 選択中の項目の配置。グリッドにあるものだけ。
+    private var selectedPlacement: GridPlacement? {
+        guard let selection, case .grid(let day) = selection.place else { return nil }
+        return columns.first { $0.day == day }?.placements.first { $0.id == selection.itemID }
+    }
+
+    /// 選択へスクロールするときの行き先。項目も `offset` で置いているので、同じ位置と高さの目印を別に置く。
+    @ViewBuilder
+    private func selectionAnchor(_ axis: DayGridAxis) -> some View {
+        if let placement = selectedPlacement {
+            Color.clear
+                .frame(height: max(18, axis.height(fromMinute: placement.startMinute, to: placement.endMinute)))
+                .alignmentGuide(.top) { _ in -axis.y(forMinute: placement.startMinute) }
+                .id(Self.selectionID)
+                .allowsHitTesting(false)
         }
     }
 
@@ -303,6 +328,7 @@ struct DayGridView: View {
                 GridItemView(
                     placement: placement,
                     anchor: Self.anchor(for: column.day),
+                    isSelected: selection == TimelineSelection(itemID: placement.id, place: .grid(day: column.day)),
                     editing: editing,
                     labelColumnWidth: labelWidth - 6,
                     distanceToGridLeft: x,
@@ -358,6 +384,7 @@ struct DayGridView: View {
     /// エディタを開いた場所のキー。日をまたぐ予定は複数の列に出るので、列の日で区別する。
     private static func anchor(for day: Date) -> String { TimelineSelection.Place.grid(day: day).editorAnchor }
     private static func hourID(_ hour: Int) -> String { "hour-\(hour)" }
+    private static let selectionID = "selection"
 }
 
 /// ドラッグの落とし先。`dayOffset` は掴んだ列から何列動かすか。
@@ -374,6 +401,8 @@ private struct GridItemView: View {
     let placement: GridPlacement
     /// エディタを開く場所のキー
     let anchor: String
+    /// キー操作で選択中か
+    let isSelected: Bool
     let editing: ItemEditing
     /// 目盛りの列の幅と、この項目の左端からグリッド左端までの距離。ドラッグ中の時刻をその列に出すのに使う
     let labelColumnWidth: CGFloat
@@ -402,6 +431,7 @@ private struct GridItemView: View {
         let target = isDragging && !isOverAllDay ? dropTarget(translation) : nil
         let shiftX = CGFloat(target?.dayOffset ?? 0) * dayWidth
         content
+            .selectionRing(isSelected)
             .opacity(item.isVirtual ? 0.45 : isOverAllDay ? 0.3 : isDragging ? 0.85 : 1)
             .onChange(of: isDragging) { _, dragging in
                 if !dragging { board.ghost = nil }

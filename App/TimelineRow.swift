@@ -8,6 +8,8 @@ struct TimelineRow: View {
     let editing: ItemEditing
     /// エディタを開く場所のキー。同じ項目をほかの場所（グリッドや終日欄）にも出す画面で、そちらと区別する。
     var anchor: String?
+    /// キー操作で選択中か
+    var isSelected = false
     let onToggle: () -> Void
 
     var body: some View {
@@ -35,6 +37,7 @@ struct TimelineRow: View {
             .itemEditor(for: item, editing, at: anchor)
         }
         .padding(.vertical, 2)
+        .selectionRing(isSelected)
     }
 
     @ViewBuilder
@@ -66,5 +69,18 @@ struct TimelineRow: View {
         let startText = start.formatted(date: .omitted, time: .shortened)
         guard let end = item.end else { return startText }
         return "\(startText)–\(end.formatted(date: .omitted, time: .shortened))"
+    }
+}
+
+extension View {
+    /// キー操作で選択中の項目を示すアクセント色の枠。
+    func selectionRing(_ isSelected: Bool) -> some View {
+        overlay {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 }

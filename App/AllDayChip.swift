@@ -7,6 +7,8 @@ struct AllDayChip: View {
     let item: TimelineItem
     let editing: ItemEditing
     var fillsWidth = false
+    /// キー操作で選択中か
+    var isSelected = false
     /// ドラッグの設定。nil なら動かせない。
     var drag: AllDayChipDrag?
     let onToggle: () -> Void
@@ -52,6 +54,7 @@ struct AllDayChip: View {
         .padding(.vertical, 4)
         .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
         .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
+        .selectionRing(isSelected)
         .contentShape(Rectangle())
         .onEditGesture { editing.open(item, at: Self.anchor) }
         .itemEditor(for: item, editing, at: Self.anchor)

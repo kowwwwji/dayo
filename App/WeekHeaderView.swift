@@ -8,6 +8,8 @@ import SwiftUI
 struct WeekHeaderView: View {
     let days: [Date]
     let spans: [AllDaySpan]
+    /// キー操作で選択中の項目
+    var selection: TimelineSelection?
     let editing: ItemEditing
     let board: TimelineDragBoard
     let onToggle: (TimelineItem) -> Void
@@ -73,7 +75,25 @@ struct WeekHeaderView: View {
         .padding(.trailing, DayGridView.trailingInset)
     }
 
+    /// 選択中の帯。終日欄にあるものだけ。
+    private var selectedSpan: AllDaySpan? {
+        guard let selection, selection.place == .allDay else { return nil }
+        return spans.first { $0.item.id == selection.itemID }
+    }
+
+    private static let selectionID = "selection"
+
     private var allDayRow: some View {
+        ScrollViewReader { proxy in
+            allDayScroll
+                // 段が多くて隠れている帯を選んだら、見えるところまで動かす
+                .onChange(of: selectedSpan?.id) { _, id in
+                    if id != nil { proxy.scrollTo(Self.selectionID) }
+                }
+        }
+    }
+
+    private var allDayScroll: some View {
         ScrollView {
             GeometryReader { geometry in
                 // 余白を曜日の行・グリッドと同じにしてあるので、残りの幅を日数で割れば列幅が揃う
@@ -87,6 +107,7 @@ struct WeekHeaderView: View {
                             item: span.item,
                             editing: editing,
                             fillsWidth: true,
+                            isSelected: selectedSpan?.id == span.id,
                             drag: AllDayChipDrag(
                                 board: board,
                                 dayWidth: dayWidth,
@@ -106,6 +127,16 @@ struct WeekHeaderView: View {
                 }
             }
             .frame(height: CGFloat(laneCount) * laneHeight)
+            // 帯は `offset` で置いていてスクロールの行き先にならないので、選択中の帯の位置に目印を重ねる
+            .overlay(alignment: .top) {
+                if let selectedSpan {
+                    Color.clear
+                        .frame(height: laneHeight)
+                        .alignmentGuide(.top) { _ in -CGFloat(selectedSpan.lane) * laneHeight }
+                        .id(Self.selectionID)
+                        .allowsHitTesting(false)
+                }
+            }
         }
         .frame(height: CGFloat(min(laneCount, visibleLanes)) * laneHeight)
         .padding(.leading, DayGridView.labelWidth)

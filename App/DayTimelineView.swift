@@ -127,8 +127,14 @@ struct DayTimelineView: View {
             // 期限切れを上、終日を時間軸のすぐ上に置く。終日欄は時間軸とドラッグで行き来するので隣り合わせにする
             if !model.timeline.overdue.isEmpty {
                 // 1 行およそ 40pt。多くても 3 行半で止めて残りはスクロール
-                PinnedSection(title: "期限切れ", scrollHeight: min(CGFloat(model.timeline.overdue.count) * 40, 140)) {
-                    ForEach(model.timeline.overdue) { row($0, isOverdue: true) }
+                PinnedSection(
+                    title: "期限切れ",
+                    scrollHeight: min(CGFloat(model.timeline.overdue.count) * 40, 140),
+                    scrollTarget: model.selection?.place == .overdue ? model.selection?.itemID : nil
+                ) {
+                    ForEach(model.timeline.overdue) { item in
+                        row(item, isOverdue: true).id(item.id)
+                    }
                 }
                 Divider()
             }
@@ -138,6 +144,7 @@ struct DayTimelineView: View {
                 WeekHeaderView(
                     days: model.columns.map(\.day),
                     spans: model.allDaySpans,
+                    selection: model.selection,
                     editing: editing,
                     board: board,
                     onToggle: { item in Task { await model.toggleCompleted(item) } },
@@ -186,6 +193,7 @@ struct DayTimelineView: View {
                     AllDayChip(
                         item: item,
                         editing: editing,
+                        isSelected: model.selection == TimelineSelection(itemID: item.id, place: .allDay),
                         drag: AllDayChipDrag(
                             board: board,
                             onMoveDays: { _ in },
@@ -216,6 +224,7 @@ struct DayTimelineView: View {
     private var timed: some View {
         DayGridView(
             columns: model.columns,
+            selection: model.selection,
             isLoaded: model.isLoadedForRange,
             editing: editing,
             board: board,
@@ -247,7 +256,13 @@ struct DayTimelineView: View {
     }
 
     private func row(_ item: TimelineItem, isOverdue: Bool = false) -> some View {
-        TimelineRow(item: item, isOverdue: isOverdue, editing: editing, anchor: isOverdue ? TimelineSelection.Place.overdue.editorAnchor : nil) {
+        TimelineRow(
+            item: item,
+            isOverdue: isOverdue,
+            editing: editing,
+            anchor: isOverdue ? TimelineSelection.Place.overdue.editorAnchor : nil,
+            isSelected: isOverdue && model.selection == TimelineSelection(itemID: item.id, place: .overdue)
+        ) {
             Task { await model.toggleCompleted(item) }
         }
     }
@@ -259,6 +274,8 @@ struct DayTimelineView: View {
 private struct PinnedSection<Content: View>: View {
     let title: String
     var scrollHeight: CGFloat?
+    /// 見えるところまでスクロールしたい行の id。`scrollHeight` を渡したときだけ効く
+    var scrollTarget: String?
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -269,12 +286,17 @@ private struct PinnedSection<Content: View>: View {
                 .frame(width: DayGridView.labelWidth - 6, alignment: .trailing)
                 .padding(.top, 4)
             if let scrollHeight {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
-                        content
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 6) {
+                            content
+                        }
+                        // ScrollView は中身が狭いと中央に寄せるので、左端に固定する
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    // ScrollView は中身が狭いと中央に寄せるので、左端に固定する
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .onChange(of: scrollTarget) { _, target in
+                        if let target { proxy.scrollTo(target) }
+                    }
                 }
                 .frame(height: scrollHeight)
             } else {

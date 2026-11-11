@@ -71,15 +71,40 @@ private struct KeyCatcher: NSViewRepresentable {
         var action: ((TimelineKey) -> Bool)?
         private var monitor: Any?
 
+        /// 入力欄の代わりにフォーカスを持つ。ウインドウは前面に戻るたびに first responder を復元するので、
+        /// 誰も持っていないと入力欄へ戻ってしまい、編集を閉じたあとのキー操作が文字入力になる。
+        override var acceptsFirstResponder: Bool { true }
+        override var focusRingType: NSFocusRingType {
+            get { .none }
+            set {}
+        }
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             removeMonitor()
-            guard window != nil else { return }
+            guard let window else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self, self.accepts(event), let key = TimelineKey(event), self.action?(key) == true
+                guard let self else { return event }
+                if self.leavesTextField(event) { return nil }
+                guard self.accepts(event), let key = TimelineKey(event), self.action?(key) == true
                 else { return event }
                 return nil
             }
+            // 起動時はキー操作を受けられる状態から始める（入力欄へは ⌘N）
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.window === window else { return }
+                window.makeFirstResponder(self)
+            }
+        }
+
+        /// 入力欄での Esc。入力欄を抜けてキー操作を受けられる状態へ戻す。変換中の Esc は変換の取り消しなので触らない。
+        private func leavesTextField(_ event: NSEvent) -> Bool {
+            guard let window, event.window === window, window.attachedSheet == nil,
+                  event.charactersIgnoringModifiers == "\u{1b}",
+                  event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
+                  let text = window.firstResponder as? NSTextView, !text.hasMarkedText()
+            else { return false }
+            return window.makeFirstResponder(self)
         }
 
         deinit {
@@ -91,10 +116,10 @@ private struct KeyCatcher: NSViewRepresentable {
             monitor = nil
         }
 
-        /// このウインドウが前面で、文字入力中でないか。
-        /// ポップオーバーは別のウインドウなので、そこでのキー入力は `event.window` の比較で外れる。
+        /// このウインドウ宛てのキー入力で、文字入力中でないか。
+        /// ポップオーバーや設定は別のウインドウなので、そこでのキー入力は `event.window` の比較で外れる。
         private func accepts(_ event: NSEvent) -> Bool {
-            guard isEnabled, let window, event.window === window, window.isKeyWindow, window.attachedSheet == nil
+            guard isEnabled, let window, event.window === window, window.attachedSheet == nil
             else { return false }
             // 入力欄を編集している間、ウインドウの first responder は NSText（フィールドエディタ）になる
             return !(window.firstResponder is NSText)
