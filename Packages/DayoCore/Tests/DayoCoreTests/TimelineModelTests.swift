@@ -2400,3 +2400,165 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(!model.canUndo)
     }
 }
+
+@MainActor
+@Suite struct TimelineModelResizeTests {
+    /// 2026-11-10 は火曜。週（日曜始まり）は 11-08 〜 11-14。
+    let today = iso("2026-11-10T00:00:00Z")
+    let weekStart = iso("2026-11-08T00:00:00Z")
+
+    private func make(
+        _ id: String, kind: ItemKind = .event, _ start: String, minutes: Double = 60,
+        allDay: Bool = false, editable: Bool = true
+    ) -> TimelineItem {
+        let start = iso(start)
+        return TimelineItem(
+            id: id, calendarItemIdentifier: id, kind: kind, title: id, start: start,
+            end: kind == .event ? start.addingTimeInterval(minutes * 60) : nil,
+            isAllDay: allDay, isCompleted: false, sourceName: "", accountName: "",
+            color: CGColor(gray: 0, alpha: 1), recurrence: nil, notes: "メモ", isEditable: editable
+        )
+    }
+
+    private func loaded(_ items: [TimelineItem]) async -> (TimelineModel, FakeSource) {
+        let source = FakeSource()
+        source.snapshots[weekStart] = TimelineSnapshot(items: items, overdue: [])
+        let model = TimelineModel(source: source, calendar: utc, mode: .week) { self.today }
+        await model.activate()
+        return (model, source)
+    }
+
+    @Test func theResizingDraftChangesOnlyTheEnd() {
+        let meeting = make("meeting", "2026-11-10T09:00:00Z")
+
+        let draft = ItemDraft(resizing: meeting, toEnd: iso("2026-11-10T11:30:00Z"))
+
+        #expect(draft == ItemDraft(
+            kind: .event, title: "meeting", start: iso("2026-11-10T09:00:00Z"), end: iso("2026-11-10T11:30:00Z"),
+            notes: "メモ"
+        ))
+    }
+
+    @Test func resizingSendsTheNewEndAndKeepsTheStart() async {
+        let meeting = make("meeting", "2026-11-10T09:00:00Z")
+        let (model, source) = await loaded([meeting])
+
+        await model.resize(meeting, toEnd: iso("2026-11-10T11:30:00Z"), span: .futureOccurrences)
+
+        #expect(source.updates.map(\.draft.start) == [iso("2026-11-10T09:00:00Z")])
+        #expect(source.updates.map(\.draft.end) == [iso("2026-11-10T11:30:00Z")])
+        #expect(source.updates.map(\.span) == [.futureOccurrences])
+    }
+
+    @Test func theItemShowsItsNewLengthBeforeTheSaveFinishes() async {
+        let meeting = make("meeting", "2026-11-10T09:00:00Z")
+        let (model, source) = await loaded([meeting])
+        source.gate = true
+
+        let task = Task { await model.resize(meeting, toEnd: iso("2026-11-10T11:30:00Z"), span: .thisOccurrence) }
+        await source.waitForPending(1)
+
+        #expect(model.timeline.timed.map(\.end) == [iso("2026-11-10T11:30:00Z")])
+        source.release(at: 0)
+        await task.value
+    }
+
+    @Test func resizingStopsAtAQuarterHourAndAtTheEndOfTheDay() async {
+        let meeting = make("meeting", "2026-11-10T09:00:00Z")
+        let (model, source) = await loaded([meeting])
+
+        await model.resize(meeting, toEnd: iso("2026-11-10T08:00:00Z"), span: .thisOccurrence)
+        await model.resize(meeting, toEnd: iso("2026-11-11T03:00:00Z"), span: .thisOccurrence)
+
+        #expect(source.updates.map(\.draft.end) == [iso("2026-11-10T09:15:00Z"), iso("2026-11-11T00:00:00Z")])
+    }
+
+    @Test func resizingToTheSameEndSendsNothing() async {
+        let meeting = make("meeting", "2026-11-10T09:00:00Z")
+        let (model, source) = await loaded([meeting])
+
+        await model.resize(meeting, toEnd: iso("2026-11-10T10:00:00Z"), span: .thisOccurrence)
+
+        #expect(source.updates.isEmpty)
+    }
+
+    @Test func theSelectionGrowsAndShrinksToTheNextQuarterHour() async {
+        let (model, source) = await loaded([make("meeting", "2026-11-10T09:00:00Z", minutes: 67)])
+        model.selectNext()
+
+        await model.resizeSelection(1, span: .thisOccurrence)
+        await model.resizeSelection(-1, span: .futureOccurrences)
+
+        // 取得元の内容は変えていないので、2 回とも 10:07 の終了から数える
+        #expect(source.updates.map(\.draft.end) == [iso("2026-11-10T10:15:00Z"), iso("2026-11-10T10:00:00Z")])
+        #expect(source.updates.map(\.draft.start) == [iso("2026-11-10T09:00:00Z"), iso("2026-11-10T09:00:00Z")])
+        #expect(source.updates.map(\.span) == [.thisOccurrence, .futureOccurrences])
+        #expect(model.selection == TimelineSelection(itemID: "meeting", place: .grid(day: today)))
+    }
+
+    @Test func theSelectionOnAQuarterHourMovesAFullQuarter() async {
+        let (model, source) = await loaded([make("meeting", "2026-11-10T09:00:00Z")])
+        model.selectNext()
+
+        await model.resizeSelection(1, span: .thisOccurrence)
+        await model.resizeSelection(-1, span: .thisOccurrence)
+
+        #expect(source.updates.map(\.draft.end) == [iso("2026-11-10T10:15:00Z"), iso("2026-11-10T09:45:00Z")])
+    }
+
+    @Test func theSelectionDoesNotShrinkBelowAQuarterHourOrGrowPastMidnight() async {
+        let (model, source) = await loaded([
+            make("short", "2026-11-10T09:00:00Z", minutes: 15),
+            make("last", "2026-11-10T23:00:00Z"),
+        ])
+        model.selectNext()
+        await model.resizeSelection(-1, span: .thisOccurrence)
+        model.selectNext()
+        await model.resizeSelection(1, span: .thisOccurrence)
+
+        #expect(source.updates.isEmpty)
+    }
+
+    @Test func remindersAllDayAndReadOnlyItemsAreNotResized() async {
+        let todo = make("todo", kind: .reminder, "2026-11-10T08:00:00Z")
+        let holiday = make("holiday", "2026-11-10T00:00:00Z", minutes: 24 * 60, allDay: true)
+        let birthday = make("birthday", "2026-11-10T09:00:00Z", editable: false)
+        let (model, source) = await loaded([todo, holiday, birthday])
+
+        for item in [todo, holiday, birthday] {
+            await model.resize(item, toEnd: iso("2026-11-10T12:00:00Z"), span: .thisOccurrence)
+        }
+        for _ in 0..<3 {
+            model.selectNext()
+            await model.resizeSelection(1, span: .thisOccurrence)
+        }
+        await model.resizeSelection(1, span: .thisOccurrence)
+
+        #expect(model.selection == TimelineSelection(itemID: "birthday", place: .grid(day: today)))
+        #expect(source.updates.isEmpty)
+    }
+
+    @Test func nothingIsResizedWithoutASelection() async {
+        let (model, source) = await loaded([make("meeting", "2026-11-10T09:00:00Z")])
+
+        await model.resizeSelection(1, span: .thisOccurrence)
+
+        #expect(source.updates.isEmpty)
+    }
+
+    @Test func undoingAResizeSendsTheOriginalEnd() async {
+        let (model, source) = await loaded([make("meeting", "2026-11-10T09:00:00Z")])
+        model.selectNext()
+        // 保存後の読み直しで、長さの変わった予定が返る
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [make("meeting", "2026-11-10T09:00:00Z", minutes: 75)], overdue: []
+        )
+        await model.resizeSelection(1, span: .thisOccurrence)
+
+        await model.undo()
+
+        #expect(source.updates.map(\.draft.end) == [iso("2026-11-10T10:15:00Z"), iso("2026-11-10T10:00:00Z")])
+        #expect(source.updates[1].item.end == iso("2026-11-10T10:15:00Z"))
+        #expect(source.updates[1].draft.start == iso("2026-11-10T09:00:00Z"))
+    }
+}

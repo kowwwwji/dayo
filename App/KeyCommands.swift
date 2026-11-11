@@ -20,6 +20,8 @@ enum TimelineKey {
     case moveEarlier
     case moveToPreviousDay
     case moveToNextDay
+    case lengthen
+    case shorten
     case deleteSelection
     case undo
 
@@ -66,6 +68,14 @@ enum TimelineKey {
             case "k": self = .moveEarlier
             case "h": self = .moveToPreviousDay
             case "l": self = .moveToNextDay
+            default: return nil
+            }
+            return
+        }
+        if modifiers == .option {
+            switch character {
+            case "j": self = .lengthen
+            case "k": self = .shorten
             default: return nil
             }
             return
@@ -214,6 +224,7 @@ struct KeyHelpView: View {
             ("space", "リマインダーを完了 / 未完了"),
             ("⇧j or ⇧↓ / ⇧k or ⇧↑", "15 分遅く / 早く"),
             ("⇧h or ⇧← / ⇧l or ⇧→", "前 / 次の日へ"),
+            ("⌥j or ⌥↓ / ⌥k or ⌥↑", "予定を 15 分長く / 短く"),
             ("d or delete", "削除"),
             ("u or ⌘z", "直前の移動・完了・削除を取り消す"),
         ]),

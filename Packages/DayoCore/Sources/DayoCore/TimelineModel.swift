@@ -339,6 +339,43 @@ public final class TimelineModel {
         await apply(ItemDraft(makingAllDay: item, on: calendar.startOfDay(for: day)), to: item, span: span)
     }
 
+    /// 予定の長さを変えた（下端のドラッグ）。開始はそのままで、終了を `end` にする。
+    /// 最短 15 分、終わりのある日の 24:00 まで。リマインダーと終日の項目には長さが無いので何もしない。
+    public func resize(_ item: TimelineItem, toEnd end: Date, span: EditSpan) async {
+        guard let bounds = resizeBounds(for: item) else { return }
+        let clamped = min(max(end, bounds.ends.lowerBound), bounds.ends.upperBound)
+        guard clamped != item.end else { return }
+        await apply(ItemDraft(resizing: item, toEnd: clamped), to: item, span: span)
+    }
+
+    /// 選択中の予定の終了を、次（`direction` が正）/ 前の 15 分の区切りへ動かす。`resize` と同じ範囲で止まる。
+    public func resizeSelection(_ direction: Int, span: EditSpan) async {
+        guard !isMovingSelection, let item = selectedItem, let end = item.end, let bounds = resizeBounds(for: item)
+        else { return }
+        let step: TimeInterval = 15 * 60
+        let current = end.timeIntervalSince(bounds.day)
+        let quarters = (current / step).rounded(.down)
+        let target = direction > 0
+            ? (quarters + 1) * step
+            : (quarters * step == current ? current - step : quarters * step)
+        let resized = bounds.day.addingTimeInterval(target)
+        guard bounds.ends.contains(resized) else { return }
+        isMovingSelection = true
+        defer { isMovingSelection = false }
+        await apply(ItemDraft(resizing: item, toEnd: resized), to: item, span: span)
+    }
+
+    /// 長さを変えられる予定なら、終了の置ける範囲と、終わりのある日（その 0:00）。
+    private func resizeBounds(for item: TimelineItem) -> (day: Date, ends: ClosedRange<Date>)? {
+        guard isChangeable(item), item.kind == .event, !item.isAllDay, let start = item.start, let end = item.end
+        else { return nil }
+        // ちょうど 0:00 に終わる予定は、前の日の 24:00 に終わるものとして扱う
+        let day = calendar.startOfDay(for: max(start, end.addingTimeInterval(-1)))
+        let shortest = start.addingTimeInterval(15 * 60)
+        guard let midnight = calendar.date(byAdding: .day, value: 1, to: day), shortest <= midnight else { return nil }
+        return (day, shortest...midnight)
+    }
+
     /// 選択中の項目。
     public var selectedItem: TimelineItem? {
         cursorPosition.flatMap { cursor.item(for: $0.selection) }

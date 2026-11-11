@@ -73,6 +73,11 @@ extension ItemDraft {
         self.init(item, start: day, end: day, isAllDay: true)
     }
 
+    /// 予定の開始はそのままに、終了だけを変える下書き。
+    public init(resizing item: TimelineItem, toEnd end: Date) {
+        self.init(item, start: item.start ?? end, end: end, isAllDay: item.isAllDay)
+    }
+
     /// 動かした項目の日時を、動かす前（`original`）のものへ戻す下書き。日時のほかは、いまの項目（`current`）のまま。
     /// 終日にしたとき外れた早期リマインダーは、時刻付きへ戻すときに元の値を付け直す。
     init?(restoring original: TimelineItem, on current: TimelineItem) {

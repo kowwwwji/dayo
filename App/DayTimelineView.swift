@@ -88,6 +88,8 @@ struct DayTimelineView: View {
         case .moveEarlier: moveSelection { await model.moveSelectionInTime(-1, span: $0) }
         case .moveToPreviousDay: moveSelection { await model.moveSelectionByDay(-1, span: $0) }
         case .moveToNextDay: moveSelection { await model.moveSelectionByDay(1, span: $0) }
+        case .lengthen: resizeSelection(1)
+        case .shorten: resizeSelection(-1)
         case .deleteSelection:
             guard let item = model.selectedItem, item.isEditable else { return false }
             delete(item)
@@ -108,6 +110,12 @@ struct DayTimelineView: View {
     private func moveSelection(_ perform: @escaping (EditSpan) async -> Void) {
         guard let item = model.selectedItem else { return }
         change(item, perform)
+    }
+
+    /// 選択中の予定の長さをキーで変える。長さの無い項目（リマインダー、終日）では範囲も聞かない。
+    private func resizeSelection(_ direction: Int) {
+        guard let item = model.selectedItem, item.kind == .event, !item.isAllDay else { return }
+        change(item) { await model.resizeSelection(direction, span: $0) }
     }
 
     /// 選択中の項目を削除する。確認は出さない（すぐには消さず、取り消せる間を置くため）。
@@ -293,6 +301,9 @@ struct DayTimelineView: View {
             },
             onMakeAllDay: { item, day in
                 change(item) { await model.makeAllDay(item, onDay: day, span: $0) }
+            },
+            onResize: { item, end, span in
+                Task { await model.resize(item, toEnd: end, span: span) }
             }
         )
     }
