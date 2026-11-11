@@ -199,8 +199,10 @@ struct ItemEditorView: View {
                         .focused($notesFocused)
                         .overlay {
                             if notesFocused {
-                                RoundedRectangle(cornerRadius: 4)
+                                // 文字に重ならないよう、欄の外側に描く
+                                RoundedRectangle(cornerRadius: 6)
                                     .strokeBorder(Color.accentColor, lineWidth: 2)
+                                    .padding(-5)
                                     .allowsHitTesting(false)
                             }
                         }
