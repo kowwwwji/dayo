@@ -234,7 +234,7 @@ struct KeyHelpView: View {
             ("⌘← / ⌘→", "前 / 次の日（3日表示では 3 日、週表示では週）"),
             ("g", "日付を指定して移動"),
             ("⌘1 / ⌘2 / ⌘3", "日表示 / 3日表示 / 週表示"),
-            ("⌃⌘s", "サイドバーを出す / 隠す"),
+            ("⌘s", "サイドバーを出す / 隠す"),
             ("⌘r", "最新の状態に更新"),
         ]),
         Section(title: "そのほか", rows: [
@@ -310,7 +310,7 @@ struct TimelineCommands: Commands {
                 .keyboardShortcut("r")
             Divider()
             Button("サイドバーを表示 / 非表示") { SidebarSetting.toggle() }
-                .keyboardShortcut("s", modifiers: [.control, .command])
+                .keyboardShortcut("s")
         }
     }
 }
