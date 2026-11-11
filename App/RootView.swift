@@ -51,8 +51,6 @@ struct RootView: View {
             }
             .navigationTitle(title)
         }
-        // ここに付ける。WindowGroup の中身の型が変わると、保存されたウインドウの位置と大きさが引き継がれない
-        .showsTodayInDock()
         #else
         TabView {
             NavigationStack {

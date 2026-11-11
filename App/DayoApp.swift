@@ -7,6 +7,9 @@ struct DayoApp: App {
     @State private var quickInput: QuickInputModel
     @State private var quickInputFocus = QuickInputFocus()
     private let source = EventKitRepository()
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor private var dockIcon: DockIconDelegate
+    #endif
 
     init() {
         let timeline = TimelineModel(source: source, mode: TimelineModeSetting.stored)
