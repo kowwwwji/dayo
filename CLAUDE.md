@@ -14,7 +14,7 @@
 - `xcodegen generate` で `Dayo.xcodeproj` を生成する（`project.yml` が正。`.xcodeproj` と `App/Info.plist` は生成物で git 管理外）
 - ドメイン層は `Packages/DayoCore`。テストは `cd Packages/DayoCore && swift test`（Swift Testing）
 - アプリは `xcodebuild -project Dayo.xcodeproj -scheme Dayo -destination 'platform=macOS' -derivedDataPath DerivedData build`。起動は `open DerivedData/Build/Products/Debug/Dayo.app`。Mac はアドホック署名、iOS は `DEVELOPMENT_TEAM` 未設定のためシミュレータのみ
-- 普段使いのアプリを入れる・更新するのは `scripts/install.sh`（Release ビルドを自己署名の証明書 `Dayo Local Signing` で署名して `/Applications/Dayo.app` へ入れ、起動する）。証明書は `scripts/create-signing-cert.sh` で 1 回だけ作る。同じ証明書で署名し続けるので、入れ直しても許可ダイアログは出ない
+- 普段使いのアプリを入れる・更新するのは `scripts/install.sh`（手順と署名の理由は `README.md`）
 - Debug ビルドの Bundle ID は `com.kowwwwji.Dayo.dev`。入れたアプリ（`com.kowwwwji.Dayo`）とは設定も許可も別なので、確認用の起動で普段使いの設定は変わらない
 - アイコンの図柄は `scripts/make-icon.swift`。変えたら `scripts/make-appiconset.sh` でアセットを作り直す
 - iOS のビルド確認は `xcodebuild -project Dayo.xcodeproj -scheme Dayo -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData build`
