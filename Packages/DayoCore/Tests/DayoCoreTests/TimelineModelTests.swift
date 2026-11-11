@@ -14,6 +14,7 @@ private final class FakeSource: CalendarSource {
     private(set) var completions: [(id: String, completed: Bool)] = []
     private(set) var updates: [(item: TimelineItem, draft: ItemDraft, span: EditSpan)] = []
     private(set) var deletions: [(item: TimelineItem, span: EditSpan)] = []
+    private(set) var refreshCount = 0
     var gate = false
     private var pending: [CheckedContinuation<Void, Never>] = []
     var pendingCount: Int { pending.count }
@@ -54,6 +55,8 @@ private final class FakeSource: CalendarSource {
     }
 
     func destinations() async throws -> [Destination] { [] }
+
+    func refresh() async { refreshCount += 1 }
 
     var changes: AsyncStream<Void> { AsyncStream { _ in } }
 
@@ -96,6 +99,19 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         _ source: FakeSource, mode: TimelineMode = .day, now: @escaping () -> Date
     ) -> TimelineModel {
         TimelineModel(source: source, calendar: utc, mode: mode, now: now)
+    }
+
+    @Test func refreshAsksTheSourceToSyncAndReloads() async {
+        let source = FakeSource()
+        let model = makeModel(source) { self.d0 }
+        await model.activate()
+        let added = item("added", start: iso("2026-11-10T09:00:00Z"))
+        source.snapshots[d0] = TimelineSnapshot(items: [added], overdue: [])
+
+        await model.refresh()
+
+        #expect(source.refreshCount == 1)
+        #expect(model.timeline.timed == [added])
     }
 
     @Test func activateLoadsTodayWithOverdue() async {

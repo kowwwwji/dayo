@@ -276,6 +276,10 @@ public final class EventKitRepository: CalendarSource {
         return calendar.dateComponents(units, from: date)
     }
 
+    public func refresh() async {
+        store.refreshSourcesIfNecessary()
+    }
+
     /// 同期中は通知がまとめて届くため、未処理分は 1 件に畳む。
     public var changes: AsyncStream<Void> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in

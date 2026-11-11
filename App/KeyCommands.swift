@@ -214,6 +214,7 @@ struct KeyHelpView: View {
             ("⌘← / ⌘→", "前 / 次の日（週表示では週）"),
             ("⌘1 / ⌘2 / ⌘3", "日表示 / 3日表示 / 週表示"),
             ("⌃⌘s", "サイドバーを出す / 隠す"),
+            ("⌘r", "最新の状態に更新"),
         ]),
         Section(title: "そのほか", rows: [
             ("⌘n", "入力欄へ"),
@@ -283,6 +284,9 @@ struct TimelineCommands: Commands {
                 .keyboardShortcut("2")
             Button("週表示") { TimelineModeSetting.set(.week, on: model) }
                 .keyboardShortcut("3")
+            Divider()
+            Button("最新の状態に更新") { Task { await model.refresh() } }
+                .keyboardShortcut("r")
             Divider()
             Button("サイドバーを表示 / 非表示") { SidebarSetting.toggle() }
                 .keyboardShortcut("s", modifiers: [.control, .command])

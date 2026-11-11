@@ -113,6 +113,13 @@ public final class TimelineModel {
         activation = nil
     }
 
+    /// 同期を待たずに最新を見たいときに呼ぶ。同期元へ取り込みを頼み、いま手元にある内容で読み直す。
+    /// 取り込みで届いた分は、取得元の変更通知でもう一度読み直される。
+    public func refresh() async {
+        await source.refresh()
+        await load()
+    }
+
     public func load() async {
         loadGeneration += 1
         let generation = loadGeneration

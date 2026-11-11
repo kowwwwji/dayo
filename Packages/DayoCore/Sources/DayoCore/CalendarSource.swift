@@ -102,6 +102,13 @@ public protocol CalendarSource {
     func delete(_ item: TimelineItem, span: EditSpan) async throws
     /// 書き込めるリストとカレンダーの一覧。クイック入力の `#` `@` 補完とエディタの保存先選択に使う。
     func destinations() async throws -> [Destination]
+    /// 同期元（Google や iCloud）の新しい内容を取り込むよう頼む。取り込みは裏で進み、届いた変更は `changes` に流れる。
+    func refresh() async
     /// 取得元に変更があったときに値を流す。受け取ったら表示中の期間を再取得する。
     var changes: AsyncStream<Void> { get }
+}
+
+extension CalendarSource {
+    /// 同期元を持たない取得元では何もしない。
+    public func refresh() async {}
 }
