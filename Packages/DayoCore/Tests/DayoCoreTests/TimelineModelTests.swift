@@ -2524,6 +2524,18 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(!model.canUndo)
     }
 
+    @Test func completingARepeatingReminderLeavesNothingToUndo() async {
+        // 繰り返しのリマインダーは、完了すると期日が次の回へ進む。未完了に戻しても期日は戻らないので、取り消しの対象にしない
+        var todo = make("todo", kind: .reminder, "2026-11-10T09:00:00Z")
+        todo.hasRecurrence = true
+        let (model, source) = await loaded([todo])
+
+        await model.toggleCompleted(todo)
+
+        #expect(source.completions.map(\.completed) == [true])
+        #expect(!model.canUndo)
+    }
+
     @Test func aFailedCompletionLeavesNothingToUndo() async {
         let source = FakeSource()
         source.setCompletedError = TestError()

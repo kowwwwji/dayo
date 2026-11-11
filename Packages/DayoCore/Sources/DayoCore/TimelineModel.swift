@@ -280,9 +280,12 @@ public final class TimelineModel {
             errorMessage = error.localizedDescription
             return
         }
-        var toggled = item
-        toggled.isCompleted.toggle()
-        record(.completion(item: toggled))
+        // 繰り返しのリマインダーは、完了すると期日が次の回へ進む。未完了に戻しても期日は戻らないので、取り消しには積まない
+        if !item.hasRecurrence {
+            var toggled = item
+            toggled.isCompleted.toggle()
+            record(.completion(item: toggled))
+        }
         await load()
     }
 
