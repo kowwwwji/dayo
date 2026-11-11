@@ -90,6 +90,8 @@ public final class TimelineModel {
     /// 削除を保留にしておく長さ。この間は取り消せる。
     private let deleteDelay: Duration
     private var deletionTimer: Task<Void, Never>?
+    /// 取得元へ送っている最中の削除。終わるまで画面に出さず、その間は次の削除を受けない。
+    private var deletionInFlight: PendingDeletion?
 
     private let source: CalendarSource
     private let calendar: Calendar
@@ -295,9 +297,11 @@ public final class TimelineModel {
         switch change {
         case .dates(let moved, let original, let span):
             // 取得元は開始日時で項目を引き直すので、動かした後の項目を渡す。画面にあればいまの内容を使い、
-            // 動かしたあとの編集（タイトルなど）を巻き戻さない
+            // 動かしたあとの編集（タイトルなど）を巻き戻さない。予定は回ごとに別の項目なので開始日時も合わせる。
+            // リマインダーは 1 つのオブジェクトなので、そのあと日時を変えていても同じものを指す
             let current = (timeline.allDay + timeline.timed + timeline.overdue).first {
-                $0.calendarItemIdentifier == moved.calendarItemIdentifier && $0.start == moved.start && !$0.isVirtual
+                $0.calendarItemIdentifier == moved.calendarItemIdentifier && !$0.isVirtual
+                    && (moved.kind == .reminder || $0.start == moved.start)
             } ?? moved
             guard let draft = ItemDraft(restoring: original, on: current), let start = draft.start,
                   await apply(draft, to: current, span: span, recordsUndo: false)
@@ -488,8 +492,10 @@ public final class TimelineModel {
 
     /// 項目を削除する。画面からはすぐ消し、取得元への削除は `deleteDelay` だけ遅らせる。その間は `undo()` で何も失わずに戻る。
     /// 保留にできるのは 1 件だけなので、前の保留は先に実行する。
-    public func delete(_ item: TimelineItem, span: EditSpan) async {
-        guard !isMovingSelection, isChangeable(item) else { return }
+    /// 受けたら true。読み取り専用の項目と、別の保存や削除を取得元へ送っている最中は受けない。
+    @discardableResult
+    public func delete(_ item: TimelineItem, span: EditSpan) async -> Bool {
+        guard !isMovingSelection, deletionInFlight == nil, isChangeable(item) else { return false }
         await flushPendingDeletion()
         let pending = PendingDeletion(item: item, span: span)
         pendingDeletion = pending
@@ -505,6 +511,7 @@ public final class TimelineModel {
             self.deletionTimer = nil
             await self.flushPendingDeletion()
         }
+        return true
     }
 
     /// 保留にしている削除をいま実行する。アプリの終了時にも呼ぶ。失敗したら項目は画面へ戻る。
@@ -514,20 +521,26 @@ public final class TimelineModel {
         deletionTimer = nil
         pendingDeletion = nil
         undoStack.removeAll { if case .deletion = $0 { true } else { false } }
+        // 送り終えるまでは隠したままにする。その間の読み込みで、消す項目が画面へ戻らないように
+        deletionInFlight = pending
         do {
             try await source.delete(pending.item, span: pending.span)
+            deletionInFlight = nil
             await load()
         } catch {
+            deletionInFlight = nil
             await load()
             errorMessage = error.localizedDescription
         }
     }
 
+    /// 保留中と、取得元へ送っている最中の削除の項目を画面から外す。
     private func hidePendingDeletion() {
-        guard let pendingDeletion else { return }
+        let deletions = [pendingDeletion, deletionInFlight].compactMap { $0 }
+        guard !deletions.isEmpty else { return }
+        let isShown: (TimelineItem) -> Bool = { item in !deletions.contains { $0.hides(item) } }
         timeline = DayTimeline(
-            items: (timeline.allDay + timeline.timed).filter { !pendingDeletion.hides($0) },
-            overdue: timeline.overdue.filter { !pendingDeletion.hides($0) }
+            items: (timeline.allDay + timeline.timed).filter(isShown), overdue: timeline.overdue.filter(isShown)
         )
     }
 

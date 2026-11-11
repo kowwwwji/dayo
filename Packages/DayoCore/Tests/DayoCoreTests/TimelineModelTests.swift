@@ -41,8 +41,23 @@ private final class FakeSource: CalendarSource {
         updates.append((item, draft, span))
     }
 
+    /// 立てると `delete` が `releaseDelete` まで待つ。
+    var deleteGate = false
+    private var pendingDeletes: [CheckedContinuation<Void, Never>] = []
+
+    func waitForPendingDelete() async {
+        while pendingDeletes.isEmpty { await Task.yield() }
+    }
+
+    func releaseDelete() {
+        pendingDeletes.removeFirst().resume()
+    }
+
     /// 削除した項目は、以後の取得結果からも消える。
     func delete(_ item: TimelineItem, span: EditSpan) async throws {
+        if deleteGate {
+            await withCheckedContinuation { pendingDeletes.append($0) }
+        }
         if let deleteError { throw deleteError }
         deletions.append((item, span))
         snapshots = snapshots.mapValues { snapshot in
@@ -1765,6 +1780,63 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(source.deletions.isEmpty)
     }
 
+    /// 前の保留を取得元へ送っている最中の削除は受けない。受けると、あとから再開した側が保留を上書きして、
+    /// 画面から消えたのに消えない項目が残る。
+    @Test func aDeletionIsRefusedWhileThePreviousOneIsBeingSent() async {
+        let a = make("a", "2026-11-10T09:00:00Z")
+        let b = make("b", "2026-11-10T12:00:00Z")
+        let c = make("c", "2026-11-10T15:00:00Z")
+        let (model, source) = await loaded([a, b, c])
+        await model.delete(a, span: .thisOccurrence)
+        source.deleteGate = true
+
+        let second = Task { await model.delete(b, span: .thisOccurrence) }
+        await source.waitForPendingDelete()
+        let third = await model.delete(c, span: .thisOccurrence)
+        source.releaseDelete()
+        let accepted = await second.value
+
+        #expect(accepted)
+        #expect(!third)
+        #expect(source.deletions.map(\.item.id) == ["a"])
+        #expect(model.pendingDeletion?.item.id == "b")
+        #expect(model.columns.flatMap(\.placements).map(\.id) == ["c"])
+    }
+
+    @Test func theItemStaysHiddenWhileItsDeletionIsBeingSent() async {
+        let (model, source) = await loaded([make("a", "2026-11-10T09:00:00Z"), make("b", "2026-11-10T12:00:00Z")])
+        model.selectNext()
+        await model.deleteSelection(span: .thisOccurrence)
+        source.deleteGate = true
+
+        let flush = Task { await model.flushPendingDeletion() }
+        await source.waitForPendingDelete()
+        await model.load()
+
+        #expect(model.columns.flatMap(\.placements).map(\.id) == ["b"])
+        source.releaseDelete()
+        await flush.value
+        #expect(model.columns.flatMap(\.placements).map(\.id) == ["b"])
+    }
+
+    @Test func deletingReportsWhetherTheItemWasTaken() async {
+        let a = make("a", "2026-11-10T09:00:00Z")
+        let (model, source) = await loaded([a, make("birthday", "2026-11-10T12:00:00Z", editable: false)])
+        model.selectNext()
+        source.gate = true
+        let move = Task { await model.moveSelectionInTime(1, span: .thisOccurrence) }
+        await source.waitForPending(1)
+
+        // 移動を保存している間は受けない
+        #expect(await model.delete(a, span: .thisOccurrence) == false)
+        source.release(at: 0)
+        await move.value
+        source.gate = false
+
+        #expect(await model.delete(model.timeline.timed[1], span: .thisOccurrence) == false)
+        #expect(await model.delete(a, span: .thisOccurrence))
+    }
+
     @Test func aFailedDeletionShowsTheErrorAndBringsTheItemBack() async {
         let source = FakeSource()
         source.deleteError = TestError()
@@ -2293,6 +2365,10 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
     @Test func undoingAnAllDayDropMakesTheItemTimedAgainWithItsEarlyReminder() async {
         let todo = make("todo", kind: .reminder, "2026-11-10T09:00:00Z", earlyReminder: 10)
         let (model, source) = await loaded([todo])
+        // 保存後の読み直しで、終日になったリマインダーが返る（早期リマインダーは外れている）
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [make("todo", kind: .reminder, "2026-11-11T00:00:00Z", allDay: true)], overdue: []
+        )
         await model.makeAllDay(todo, onDay: day(11), span: .thisOccurrence)
 
         await model.undo()
@@ -2341,6 +2417,26 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         await model.undo()
 
         #expect(source.updates[1].item.id == "x#2")
+        #expect(source.updates[1].draft.title == "改名")
+        #expect(source.updates[1].draft.start == iso("2026-11-10T09:00:00Z"))
+    }
+
+    /// リマインダーは 1 つのオブジェクトなので、動かしたあと詳細編集で日時を変えていても同じものを指せる。
+    /// 記録した古い内容で上書きせず、いまの内容に元の日時だけを当てる。
+    @Test func undoingAReminderMoveUsesItsCurrentContentEvenIfItsDateWasEditedSince() async {
+        let source = FakeSource()
+        let (model, _) = await loaded([make("todo", kind: .reminder, "2026-11-10T09:00:00Z")], source: source)
+        model.selectNext()
+        await model.moveSelectionInTime(1, span: .thisOccurrence)
+        // 詳細編集で、日時とタイトルを変えた
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [make("todo", kind: .reminder, "2026-11-12T15:00:00Z", title: "改名")], overdue: []
+        )
+        await model.load()
+
+        await model.undo()
+
+        #expect(source.updates[1].item.start == iso("2026-11-12T15:00:00Z"))
         #expect(source.updates[1].draft.title == "改名")
         #expect(source.updates[1].draft.start == iso("2026-11-10T09:00:00Z"))
     }
