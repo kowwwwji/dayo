@@ -58,6 +58,8 @@ struct DayGridView: View {
 
     /// 新規登録のエディタを開く場所のキー。
     private static let newItemAnchor = "grid-new"
+    /// 項目を並べる面の座標空間。項目の上のダブルクリックも、この座標で位置を受ける
+    fileprivate static let itemSpace = "grid-items"
 
     private var days: [Date] { columns.map(\.day) }
 
@@ -104,6 +106,7 @@ struct DayGridView: View {
                                 nowIndicator(axis, dayIndex: todayIndex, dayWidth: dayWidth, totalWidth: geometry.size.width)
                             }
                         }
+                        .coordinateSpace(name: Self.itemSpace)
                     }
                     // 帯は登録用の面より上に置く。下だとダブルクリックの判定に取られて、クリックで開けなくなる
                     bands(axis)
@@ -233,22 +236,27 @@ struct DayGridView: View {
         }
     }
 
-    /// 空いている時間のダブルクリックを受ける面。項目より下に置くので、項目の上では反応しない。
+    /// 空いている時間のダブルクリックを受ける面。項目より下に置く。項目の上のダブルクリックは項目が受けて同じ処理へ回す。
     private func newItemSurface(_ axis: DayGridAxis, dayWidth: CGFloat) -> some View {
         Color.clear
             .contentShape(Rectangle())
             .gesture(SpatialTapGesture(count: 2).onEnded { value in
-                let x = value.location.x - labelWidth
-                guard dayWidth > 0, x >= 0 else { return }
-                let dayIndex = Int(x / dayWidth)
-                guard columns.indices.contains(dayIndex) else { return }
-                // 押した位置を含む 15 分の枠から始める。予定の既定の長さ（1 時間）が日の中・帯の外に収まるよう寄せる
-                let minute = axis.clampedStart(minute: axis.minute(forY: value.location.y) / 15 * 15, duration: 60)
-                let day = columns[dayIndex].day
-                guard let start = Calendar.autoupdatingCurrent.date(byAdding: .minute, value: minute, to: day) else { return }
-                newSlot = NewSlot(day: day, minute: minute)
-                editing.openNew(at: start, isAllDay: false, anchor: Self.newItemAnchor)
+                openNewItem(at: value.location, axis: axis, dayWidth: dayWidth)
             })
+    }
+
+    /// 押した位置（`itemSpace` の座標）の日時で新規登録を開く。
+    private func openNewItem(at location: CGPoint, axis: DayGridAxis, dayWidth: CGFloat) {
+        let x = location.x - labelWidth
+        guard dayWidth > 0, x >= 0 else { return }
+        let dayIndex = Int(x / dayWidth)
+        guard columns.indices.contains(dayIndex) else { return }
+        // 押した位置を含む 15 分の枠から始める。予定の既定の長さ（1 時間）が日の中・帯の外に収まるよう寄せる
+        let minute = axis.clampedStart(minute: axis.minute(forY: location.y) / 15 * 15, duration: 60)
+        let day = columns[dayIndex].day
+        guard let start = Calendar.autoupdatingCurrent.date(byAdding: .minute, value: minute, to: day) else { return }
+        newSlot = NewSlot(day: day, minute: minute)
+        editing.openNew(at: start, isAllDay: false, anchor: Self.newItemAnchor)
     }
 
     /// 新規登録中の仮の項目。エディタはここから出す。入力中のタイトルと種別を映す。
@@ -342,7 +350,8 @@ struct DayGridView: View {
                         )
                     },
                     onDrop: { target in requestMove(placement, from: dayIndex, to: target) },
-                    onDropAllDay: { day in onMakeAllDay(placement.item, day) }
+                    onDropAllDay: { day in onMakeAllDay(placement.item, day) },
+                    onNewItem: { location in openNewItem(at: location, axis: axis, dayWidth: dayWidth) }
                 )
                 .frame(
                     width: max(0, columnWidth - 2),
@@ -416,6 +425,8 @@ private struct GridItemView: View {
     let onDrop: (GridDropTarget) -> Void
     /// 終日欄へ落とした。その日
     let onDropAllDay: (Date) -> Void
+    /// 項目の上をダブルクリックした。位置は `DayGridView.itemSpace` の座標
+    let onNewItem: (CGPoint) -> Void
 
     /// `@GestureState` はジェスチャが中断（スクロール開始・ウィンドウ切替）されても自動で 0 に戻る
     @GestureState private var translation: CGSize = .zero
@@ -482,6 +493,7 @@ private struct GridItemView: View {
             .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .contentShape(Rectangle())
+            .onNewItemGesture(perform: onNewItem)
             .onEditGesture { editing.open(item, at: anchor) }
             .itemEditor(for: item, editing, at: anchor)
         case .reminder:
@@ -503,6 +515,9 @@ private struct GridItemView: View {
                     EarlyReminderMark(minutes: item.earlyReminderMinutes)
                     Spacer(minLength: 0)
                 }
+                // チェックの丸は外す。そこでのダブルクリックは完了の切替が 2 回走るだけにする
+                .contentShape(Rectangle())
+                .onNewItemGesture(perform: onNewItem)
             }
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
@@ -552,4 +567,18 @@ private struct GridItemView: View {
             }
     }
     #endif
+}
+
+private extension View {
+    /// 項目の上のダブルクリックで、その位置の日時の新規登録を開く（Mac）。ドラッグや右クリックとは別に効く。
+    @ViewBuilder
+    func onNewItemGesture(perform action: @escaping (CGPoint) -> Void) -> some View {
+        #if os(macOS)
+        simultaneousGesture(
+            SpatialTapGesture(count: 2, coordinateSpace: .named(DayGridView.itemSpace)).onEnded { action($0.location) }
+        )
+        #else
+        self
+        #endif
+    }
 }

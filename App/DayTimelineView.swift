@@ -221,7 +221,10 @@ struct DayTimelineView: View {
                             board: board,
                             onMoveDays: { _ in },
                             onMakeTimed: { day, minute in makeTimed(item, day, minute) }
-                        )
+                        ),
+                        onDoubleClick: { _ in
+                            editing.openNew(at: model.day, isAllDay: true, anchor: Self.newAllDayAnchor)
+                        }
                     ) {
                         Task { await model.toggleCompleted(item) }
                     }
@@ -230,7 +233,7 @@ struct DayTimelineView: View {
             }
             .frame(maxWidth: .infinity, minHeight: 24, alignment: .topLeading)
             #if os(macOS)
-            // 空いているところのダブルクリックで、この日の終日として登録を開く。チップより下なのでチップの上では反応しない
+            // 空いているところのダブルクリックで、この日の終日として登録を開く。チップの上のダブルクリックはチップが受ける
             .background {
                 Color.clear
                     .contentShape(Rectangle())

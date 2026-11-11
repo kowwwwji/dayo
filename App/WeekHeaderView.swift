@@ -114,7 +114,10 @@ struct WeekHeaderView: View {
                                 dayOffsets: -span.firstColumn...(days.count - 1 - span.firstColumn),
                                 onMoveDays: { onMoveDays(span.item, $0) },
                                 onMakeTimed: { day, minute in onMakeTimed(span.item, day, minute) }
-                            )
+                            ),
+                            onDoubleClick: { x in
+                                openNewItem(atColumn: span.firstColumn + Int(x / max(1, dayWidth)))
+                            }
                         ) { onToggle(span.item) }
                             .frame(width: max(0, dayWidth * CGFloat(span.columnSpan) - 3), alignment: .leading)
                             .offset(x: dayWidth * CGFloat(span.firstColumn), y: CGFloat(span.lane) * laneHeight)
@@ -150,16 +153,20 @@ struct WeekHeaderView: View {
         }
     }
 
-    /// 帯の空いているところのダブルクリックを受ける面。チップより下に置くので、チップの上では反応しない。
+    /// 帯の空いているところのダブルクリックを受ける面。チップより下に置く。チップの上のダブルクリックはチップが受けて同じ処理へ回す。
     private func newItemSurface(dayWidth: CGFloat) -> some View {
         Color.clear
             .contentShape(Rectangle())
             .gesture(SpatialTapGesture(count: 2).onEnded { value in
                 guard dayWidth > 0 else { return }
-                let index = Int(value.location.x / dayWidth)
-                guard days.indices.contains(index) else { return }
-                newDay = days[index]
-                editing.openNew(at: days[index], isAllDay: true, anchor: Self.newItemAnchor)
+                openNewItem(atColumn: Int(value.location.x / dayWidth))
             })
+    }
+
+    /// その列の日の終日として新規登録を開く。
+    private func openNewItem(atColumn index: Int) {
+        guard days.indices.contains(index) else { return }
+        newDay = days[index]
+        editing.openNew(at: days[index], isAllDay: true, anchor: Self.newItemAnchor)
     }
 }

@@ -11,6 +11,8 @@ struct AllDayChip: View {
     var isSelected = false
     /// ドラッグの設定。nil なら動かせない。
     var drag: AllDayChipDrag?
+    /// チップの上をダブルクリックした（Mac）。引数はチップの左端からの距離。帯のどの日を押したかを求めるのに使う
+    var onDoubleClick: ((CGFloat) -> Void)?
     let onToggle: () -> Void
 
     /// `@GestureState` はジェスチャが中断されても自動で nil に戻る
@@ -24,15 +26,16 @@ struct AllDayChip: View {
     /// エディタを開く場所のキー。同じリマインダーが期限切れ欄にも出ることがあるので、そちらと区別する。
     private static let anchor = TimelineSelection.Place.allDay.editorAnchor
 
+    /// チップ全体の座標空間。ダブルクリックの位置をチップの左端から測る
+    private static let space = "allDayChip"
+
     private var color: Color { Color(cgColor: item.color) }
 
     var body: some View {
         HStack(spacing: 5) {
             switch item.kind {
             case .event:
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(color)
-                    .frame(width: 3, height: 12)
+                EmptyView()
             case .reminder:
                 Button(action: onToggle) {
                     Image(systemName: item.isVirtual ? "circle.dotted" : item.isCompleted ? "checkmark.circle.fill" : "circle")
@@ -41,19 +44,35 @@ struct AllDayChip: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(item.isVirtual ? "今後の回" : item.isCompleted ? "未完了に戻す" : "完了にする")
             }
-            PriorityMark(priority: item.priority)
-                .font(.dayoTitle)
-            Text(item.title)
-                .font(.dayoTitle)
-                .lineLimit(1)
-                .strikethrough(item.isCompleted)
-                .foregroundStyle(item.isCompleted ? .secondary : .primary)
-            EarlyReminderMark(minutes: item.earlyReminderMinutes)
+            // チェックの丸以外。ダブルクリックでの登録はここで受ける（丸の上では完了の切替が 2 回走るだけにする）
+            HStack(spacing: 5) {
+                if item.kind == .event {
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(color)
+                        .frame(width: 3, height: 12)
+                }
+                PriorityMark(priority: item.priority)
+                    .font(.dayoTitle)
+                Text(item.title)
+                    .font(.dayoTitle)
+                    .lineLimit(1)
+                    .strikethrough(item.isCompleted)
+                    .foregroundStyle(item.isCompleted ? .secondary : .primary)
+                EarlyReminderMark(minutes: item.earlyReminderMinutes)
+            }
+            .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
+            .contentShape(Rectangle())
+            #if os(macOS)
+            .simultaneousGesture(
+                SpatialTapGesture(count: 2, coordinateSpace: .named(Self.space)).onEnded { onDoubleClick?($0.location.x) }
+            )
+            #endif
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
         .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
         .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
+        .coordinateSpace(name: Self.space)
         .selectionRing(isSelected)
         .contentShape(Rectangle())
         .onEditGesture { editing.open(item, at: Self.anchor) }
