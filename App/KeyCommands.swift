@@ -16,7 +16,6 @@ enum TimelineKey {
     case showPrevious
     case showNext
     case toggleHelp
-    case toggleSidebar
 
     /// キーを押し続けたときに繰り返すか。選択の移動だけ繰り返す。
     /// 完了の切替は保存が終わる前に次が来ると同じ状態を二重に書き込むので、繰り返さない。
@@ -50,7 +49,6 @@ enum TimelineKey {
         case "h": self = .selectLeft
         case "l": self = .selectRight
         case "t": self = .showToday
-        case "s": self = .toggleSidebar
         case " ": self = .toggleCompleted
         case "\r", "\u{3}": self = .openEditor
         case "\u{1b}": self = .clearSelection
@@ -176,7 +174,7 @@ struct KeyHelpView: View {
         ("t", "今日へ"),
         ("⌘N", "入力欄へ"),
         ("⌘1 / ⌘2", "日表示 / 週表示"),
-        ("s / ⌃⌘S", "サイドバーを出す / 隠す"),
+        ("⌃⌘S", "サイドバーを出す / 隠す"),
         ("⌘← / ⌘→", "前 / 次の日（週表示では週）"),
         ("?", "この一覧を出す / 閉じる"),
     ]
