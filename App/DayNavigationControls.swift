@@ -23,7 +23,7 @@ enum TimelineModeSetting {
 }
 
 /// 前後・今日へ移るボタン。指でもマウスでも押しやすいよう枠付きで大きめにする。
-/// 「今日」は今日を含まない範囲を見ているときだけ ‹ › の左に現れる。‹ › は右端に固定して位置が変わらないようにする。
+/// 「今日」は押すと表示が動くとき（今日を含まない範囲、3 日表示なら今日が左端でないとき）だけ ‹ › の左に現れる。‹ › は右端に固定して位置が変わらないようにする。
 struct DayNavigationControls: View {
     let model: TimelineModel
 
@@ -32,7 +32,7 @@ struct DayNavigationControls: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            if !model.containsToday {
+            if !model.isAlignedWithToday {
                 Button("今日") { Task { await model.showToday() } }
             }
             Button { Task { await model.showPrevious() } } label: {
@@ -46,7 +46,7 @@ struct DayNavigationControls: View {
             }
             .accessibilityLabel("次の\(unit)")
         }
-        .animation(.default, value: model.containsToday)
+        .animation(.default, value: model.isAlignedWithToday)
         .buttonStyle(.bordered)
         .controlSize(.large)
     }

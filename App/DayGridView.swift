@@ -469,7 +469,7 @@ private struct GridItemView: View {
                     if placement.durationMinutes >= 45, let start = item.start, let end = item.end {
                         Text("\(start.formatted(date: .omitted, time: .shortened))–\(end.formatted(date: .omitted, time: .shortened))")
                             .font(.dayoDetail)
-                            // 週表示の狭い列で 1 文字ずつ折り返さないようにする
+                            // 列が複数の表示の狭い列で 1 文字ずつ折り返さないようにする
                             .lineLimit(1)
                             .foregroundStyle(.secondary)
                     }

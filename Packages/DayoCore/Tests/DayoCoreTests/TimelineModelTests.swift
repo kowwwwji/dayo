@@ -1461,6 +1461,34 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.columns.map(\.day) == [today, day(11), day(12)])
     }
 
+    @Test func threeDaysAreAlignedWithTodayOnlyWhenTodayIsAtTheLeft() async {
+        let source = FakeSource()
+        let model = makeModel(source) { self.today }
+        #expect(model.isAlignedWithToday)
+
+        // 今日が真ん中。見えてはいるが、「今日」で左端へ戻せる
+        await model.showPrevious()
+        #expect(model.containsToday)
+        #expect(model.isAlignedWithToday == false)
+
+        await model.showToday()
+        #expect(model.isAlignedWithToday)
+    }
+
+    @Test func dayAndWeekAreAlignedWithTodayWhileTheyContainIt() async {
+        let source = FakeSource()
+        let model = makeModel(source, mode: .week) { self.today }
+        #expect(model.isAlignedWithToday)
+        await model.showNext()
+        #expect(model.isAlignedWithToday == false)
+
+        await model.setMode(.day)
+        await model.showToday()
+        #expect(model.isAlignedWithToday)
+        await model.showNext()
+        #expect(model.isAlignedWithToday == false)
+    }
+
     @Test func allDaySpansAreClippedToTheThreeColumns() async {
         let source = FakeSource()
         func allDay(_ id: String, from start: Date, to end: String) -> TimelineItem {

@@ -27,7 +27,7 @@ final class TimelineDragBoard {
     @ObservationIgnored var gridVisibleFrame: CGRect = .zero
     @ObservationIgnored var axis: DayGridAxis?
     @ObservationIgnored var days: [Date] = []
-    /// 終日欄のうち、日の列が並ぶ範囲（週表示は曜日の行も含む見出し全体）。
+    /// 終日欄のうち、日の列が並ぶ範囲（列が複数の表示は曜日の行も含む見出し全体）。
     @ObservationIgnored var allDayFrame: CGRect?
 
     /// 時間軸の上なら、その位置の日と開始分（15 分刻み。`duration` 分が日の中・帯の外に収まるよう寄せる）。

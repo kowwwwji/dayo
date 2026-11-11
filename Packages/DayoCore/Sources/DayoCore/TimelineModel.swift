@@ -451,9 +451,9 @@ public final class TimelineModel {
 
     private var stepComponent: Calendar.Component { mode == .week ? .weekOfYear : .day }
 
-    /// 表示が今日に合っているか。3 日表示は今日が左端のときだけ。今日が途中にある並びは自分でずらしたものなので、
-    /// 日付が変わっても動かさない。
-    private var isAlignedWithToday: Bool {
+    /// 表示が今日に合っているか（「今日」で動く先と同じか）。3 日表示は今日が左端のときだけ。
+    /// 今日が途中にある並びは自分でずらしたものなので、日付が変わっても動かさない。
+    public var isAlignedWithToday: Bool {
         mode == .threeDays ? day == calendar.startOfDay(for: now()) : containsToday
     }
 

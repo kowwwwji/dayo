@@ -2,7 +2,7 @@ import DayoCore
 import SwiftUI
 
 /// 終日予定・期日のみのリマインダーを表す小さなチップ。グリッドの上に左から並べる。
-/// 週表示では `fillsWidth` で日をまたぐ帯として使う。繰り返しリマインダーの将来回（仮想項目）は薄く描き、操作を受け付けない。
+/// 列が複数の表示では `fillsWidth` で日をまたぐ帯として使う。繰り返しリマインダーの将来回（仮想項目）は薄く描き、操作を受け付けない。
 struct AllDayChip: View {
     let item: TimelineItem
     let editing: ItemEditing

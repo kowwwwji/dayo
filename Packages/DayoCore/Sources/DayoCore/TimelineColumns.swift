@@ -19,7 +19,7 @@ public struct AllDaySpan: Equatable, Identifiable {
     public let lane: Int
 }
 
-/// 項目を「N 日分の列」に振り分ける。日表示は N=1、週表示は N=7。
+/// 項目を「N 日分の列」に振り分ける。日表示は N=1、3 日表示は N=3、週表示は N=7。
 public enum TimelineColumns {
     /// 時刻付きの項目を日ごとに配置する。日をまたぐ項目は各日に切って出す。
     /// - Parameter days: 表示する日（各日の 0:00）。昇順で連続していること
