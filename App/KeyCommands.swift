@@ -73,7 +73,8 @@ enum TimelineKey {
         case "h": self = .selectLeft
         case "l": self = .selectRight
         case "t": self = .showToday
-        case "d": self = .deleteSelection
+        // delete（⌫）と前方削除（⌦）も d と同じ
+        case "d", "\u{7f}", "\u{F728}": self = .deleteSelection
         case " ": self = .toggleCompleted
         case "\r", "\u{3}": self = .openEditor
         case "\u{1b}": self = .clearSelection
@@ -208,7 +209,7 @@ struct KeyHelpView: View {
             ("space", "リマインダーを完了 / 未完了"),
             ("⇧j or ⇧↓ / ⇧k or ⇧↑", "15 分遅く / 早く"),
             ("⇧h or ⇧← / ⇧l or ⇧→", "前 / 次の日へ"),
-            ("d", "削除"),
+            ("d or delete", "削除"),
         ]),
         Section(title: "表示", rows: [
             ("⌘← / ⌘→", "前 / 次の日（週表示では週）"),
