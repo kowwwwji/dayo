@@ -182,28 +182,47 @@ private struct KeyCatcher: NSViewRepresentable {
 struct KeyHelpView: View {
     let onClose: () -> Void
 
-    private static let rows: [(keys: String, action: String)] = [
-        ("j / k", "下 / 上の項目を選ぶ"),
-        ("h / l", "週: 隣の日の列へ　日: 前 / 次の日へ"),
-        ("⇧j / ⇧k", "選択中の項目を 15 分遅く / 早く"),
-        ("⇧h / ⇧l", "選択中の項目を前 / 次の日へ（週表示）"),
-        ("space", "選択中のリマインダーを完了 / 未完了"),
-        ("return", "選択中の項目の編集を開く"),
-        ("esc", "選択を解除（入力欄では入力欄を抜ける）"),
-        ("t", "今日へ"),
-        ("⌘n", "入力欄へ"),
-        ("⌘1 / ⌘2", "日表示 / 週表示"),
-        ("⌃⌘s", "サイドバーを出す / 隠す"),
-        ("⌘← / ⌘→", "前 / 次の日（週表示では週）"),
-        ("?", "この一覧を出す / 閉じる"),
+    private struct Section {
+        let title: String
+        let rows: [(keys: String, action: String)]
+    }
+
+    private static let sections = [
+        Section(title: "選ぶ", rows: [
+            ("j / k", "下 / 上の項目を選ぶ"),
+            ("h / l", "週: 隣の日の列へ　日: 前 / 次の日へ"),
+            ("esc", "選択を解除（入力欄では入力欄を抜ける）"),
+        ]),
+        Section(title: "選択中の項目", rows: [
+            ("return", "編集を開く"),
+            ("space", "リマインダーを完了 / 未完了"),
+            ("⇧j / ⇧k", "15 分遅く / 早く"),
+            ("⇧h / ⇧l", "前 / 次の日へ（週表示）"),
+        ]),
+        Section(title: "表示", rows: [
+            ("t", "今日へ"),
+            ("⌘← / ⌘→", "前 / 次の日（週表示では週）"),
+            ("⌘1 / ⌘2", "日表示 / 週表示"),
+            ("⌃⌘s", "サイドバーを出す / 隠す"),
+        ]),
+        Section(title: "そのほか", rows: [
+            ("⌘n", "入力欄へ"),
+            ("?", "この一覧を出す / 閉じる"),
+        ]),
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("キー操作")
-                .font(.headline)
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
-                ForEach(Self.rows, id: \.keys) { row in
+        // 1 つの Grid にまとめ、区切りをまたいでもキーの列幅が揃うようにする
+        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+            ForEach(Array(Self.sections.enumerated()), id: \.offset) { index, section in
+                GridRow {
+                    Text(section.title)
+                        .font(.dayoSmall.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .gridCellColumns(2)
+                }
+                .padding(.top, index == 0 ? 0 : 10)
+                ForEach(section.rows, id: \.keys) { row in
                     GridRow {
                         Text(row.keys)
                             .font(.dayoTitle.monospaced().weight(.semibold))
