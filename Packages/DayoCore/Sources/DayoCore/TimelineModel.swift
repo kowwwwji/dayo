@@ -35,6 +35,8 @@ public final class TimelineModel {
     /// キー操作で選択中の項目。画面から消えたら外れる。
     public var selection: TimelineSelection? { cursorPosition?.selection }
     private var cursorPosition: TimelineCursor.Position?
+    /// キー操作での移動を保存している間。保存前の内容を元に次の移動を重ねないよう、その間の移動は受けない。
+    private var isMovingSelection = false
 
     private let source: CalendarSource
     private let calendar: Calendar
@@ -218,6 +220,86 @@ public final class TimelineModel {
     public func toggleSelectedCompleted() async {
         guard let item = selectedItem, item.kind == .reminder else { return }
         await toggleCompleted(item)
+    }
+
+    /// 選択中の時刻付きの項目を、次（`direction` が正）/ 前の 15 分の区切りへ動かす。日の外へは出さない。
+    public func moveSelectionInTime(_ direction: Int, span: EditSpan) async {
+        guard let position = cursorPosition, case .grid(let day) = position.selection.place,
+              let placement = columns.first(where: { $0.day == day })?
+                  .placements.first(where: { $0.id == position.selection.itemID }),
+              isChangeable(placement.item), let start = placement.item.start
+        else { return }
+        let step = 15
+        let current = placement.startMinute
+        let target = direction > 0
+            ? (current / step + 1) * step
+            : (current % step == 0 ? current - step : current / step * step)
+        guard target >= 0, target + placement.movableMinutes <= 24 * 60 else { return }
+        let moved = start.addingTimeInterval(TimeInterval((target - current) * 60))
+        await moveSelection(placement.item, with: ItemDraft(moving: placement.item, to: moved), to: position, span: span)
+    }
+
+    /// 選択中の項目を前（`direction` が負）/ 次の日へ動かす。表示中の日の外へは出さない（日表示では動かない）。
+    public func moveSelectionByDay(_ direction: Int, span: EditSpan) async {
+        guard let position = cursorPosition, let item = selectedItem, isChangeable(item), let start = item.start,
+              let shifted = calendar.date(byAdding: .day, value: direction, to: start)
+        else { return }
+        let days = days
+        switch position.selection.place {
+        case .overdue:
+            return
+        case .allDay:
+            // 帯の最初の日が表示中の日の中に残る範囲で動かす（ドラッグと同じ）
+            guard let band = allDaySpans.first(where: { $0.item.id == item.id }),
+                  days.indices.contains(band.firstColumn + direction),
+                  let day = calendar.date(byAdding: .day, value: direction, to: position.day)
+            else { return }
+            let target = TimelineCursor.Position(selection: position.selection, day: days.contains(day) ? day : position.day)
+            await moveSelection(item, with: ItemDraft(moving: item, to: shifted, isAllDay: true), to: target, span: span)
+        case .grid(let day):
+            guard let index = days.firstIndex(of: day), days.indices.contains(index + direction) else { return }
+            let targetDay = days[index + direction]
+            let target = TimelineCursor.Position(
+                selection: TimelineSelection(itemID: item.id, place: .grid(day: targetDay)), day: targetDay
+            )
+            await moveSelection(item, with: ItemDraft(moving: item, to: shifted), to: target, span: span)
+        }
+    }
+
+    /// 選択中の項目の日時を変え、選択を動かした先へ付け替える。
+    private func moveSelection(
+        _ item: TimelineItem, with draft: ItemDraft, to target: TimelineCursor.Position, span: EditSpan
+    ) async {
+        guard !isMovingSelection else { return }
+        isMovingSelection = true
+        defer { isMovingSelection = false }
+        let origin = cursorPosition
+        // 先に行き先を選んでおく。表示は保存を待たずに動くので、選択も一緒に動かす
+        cursorPosition = target
+        await apply(draft, to: item, span: span)
+        // 予定の id は開始日時を含むので、読み直すと別の id になる。同じ項目を日時で探して選び直す
+        if cursorPosition == nil {
+            cursorPosition = position(of: item, startingAt: draft.start, like: target)
+                ?? origin.flatMap { position(of: item, startingAt: item.start, like: $0) }
+        }
+    }
+
+    /// 同じ元データで、その日時から始まる項目の位置。`like` と同じ場所（終日欄か、その日の列）から探す。
+    private func position(
+        of item: TimelineItem, startingAt start: Date?, like position: TimelineCursor.Position
+    ) -> TimelineCursor.Position? {
+        let matches: (TimelineItem) -> Bool = {
+            $0.calendarItemIdentifier == item.calendarItemIdentifier && $0.start == start && !$0.isVirtual
+        }
+        let found: TimelineItem? = switch position.selection.place {
+        case .overdue: nil
+        case .allDay: allDaySpans.map(\.item).first(where: matches)
+        case .grid(let day): columns.first { $0.day == day }?.placements.map(\.item).first(where: matches)
+        }
+        guard let found else { return nil }
+        return cursor.resolve(TimelineCursor.Position(
+            selection: TimelineSelection(itemID: found.id, place: position.selection.place), day: position.day
+        ))
     }
 
     private var cursor: TimelineCursor {
