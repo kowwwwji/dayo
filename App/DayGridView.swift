@@ -480,10 +480,12 @@ private struct GridItemView: View {
             HStack(alignment: .top, spacing: 0) {
                 Rectangle().fill(color).frame(width: 3)
                 VStack(alignment: .leading, spacing: 1) {
+                    // 繰り返しの印はブロックの右上に置く。タイトルは印の手前で切る
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(item.title)
                             .font(.dayoTitle.weight(.semibold))
                             .lineLimit(placement.durationMinutes >= 60 ? 2 : 1)
+                        Spacer(minLength: 0)
                         RecurrenceMark(item: item)
                     }
                     if placement.durationMinutes >= 45, let start = item.start, let end = item.end {
@@ -496,7 +498,6 @@ private struct GridItemView: View {
                 }
                 .padding(.horizontal, 5)
                 .padding(.vertical, 3)
-                Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
@@ -524,9 +525,9 @@ private struct GridItemView: View {
                         .strikethrough(item.isCompleted)
                         .foregroundStyle(item.isCompleted ? .secondary : .primary)
                         .lineLimit(1)
-                    RecurrenceMark(item: item)
                     EarlyReminderMark(minutes: item.earlyReminderMinutes)
                     Spacer(minLength: 0)
+                    RecurrenceMark(item: item)
                 }
                 .padding(.leading, 6)
                 .padding(.trailing, 5)

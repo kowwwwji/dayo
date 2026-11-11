@@ -59,8 +59,10 @@ struct AllDayChip: View {
                     .lineLimit(1)
                     .strikethrough(item.isCompleted)
                     .foregroundStyle(item.isCompleted ? .secondary : .primary)
-                RecurrenceMark(item: item)
                 EarlyReminderMark(minutes: item.earlyReminderMinutes)
+                // 幅いっぱいの帯では右端に寄せる
+                if fillsWidth { Spacer(minLength: 0) }
+                RecurrenceMark(item: item)
             }
             .padding(.leading, item.kind == .reminder ? 5 : 7)
             .padding(.trailing, 7)
