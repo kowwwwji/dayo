@@ -13,10 +13,13 @@ struct DayTimelineView: View {
     @State private var editor: ItemEditorModel?
     @State private var editorAnchor: String?
     @State private var board = TimelineDragBoard()
-    /// 繰り返し予定の日時を変える前に、どの回に及ぶかを聞いている間の保留
+    /// 繰り返し予定の日時を変える・削除する前に、どの回に及ぶかを聞いている間の保留
     @State private var pendingChange: PendingChange?
+    /// キーでの削除を確認している間の、削除する項目
+    @State private var pendingDelete: TimelineItem?
 
     private struct PendingChange {
+        var message = "どの回の日時を変えますか？"
         let perform: (EditSpan) async -> Void
     }
     @State private var showsSettings = false
@@ -51,7 +54,8 @@ struct DayTimelineView: View {
                 KeyHelpView { showsKeyHelp = false }
             }
         }
-        .onTimelineKey(isEnabled: model.access == .granted && editor == nil && pendingChange == nil, perform: handle)
+        .onTimelineKey(isEnabled: model.access == .granted && editor == nil && pendingChange == nil && pendingDelete == nil,
+            perform: handle)
         #endif
         .task { await model.activate() }
         .onChange(of: scenePhase) { _, phase in
@@ -85,6 +89,9 @@ struct DayTimelineView: View {
         case .moveEarlier: moveSelection { await model.moveSelectionInTime(-1, span: $0) }
         case .moveToPreviousDay: moveSelection { await model.moveSelectionByDay(-1, span: $0) }
         case .moveToNextDay: moveSelection { await model.moveSelectionByDay(1, span: $0) }
+        case .deleteSelection:
+            guard let item = model.selectedItem, item.isEditable else { return false }
+            confirmDelete(item)
         case .clearSelection:
             // 一覧が出ていれば、まずそれを閉じる
             if showsKeyHelp {
@@ -101,6 +108,21 @@ struct DayTimelineView: View {
     private func moveSelection(_ perform: @escaping (EditSpan) async -> Void) {
         guard let item = model.selectedItem else { return }
         change(item, perform)
+    }
+
+    /// 選択中の項目の削除を確認する。同期先からも消えるので必ず聞く。繰り返しの予定は、どの回かを聞くことが確認を兼ねる。
+    private func confirmDelete(_ item: TimelineItem) {
+        if item.kind == .event, item.hasRecurrence {
+            pendingChange = PendingChange(message: "どの回を削除しますか？") { await deleteSelection(item, span: $0) }
+        } else {
+            pendingDelete = item
+        }
+    }
+
+    /// 確認している間に選択が変わっていたら（同期で消えた等）、何もしない。
+    private func deleteSelection(_ item: TimelineItem, span: EditSpan) async {
+        guard model.selectedItem?.id == item.id else { return }
+        await model.deleteSelection(span: span)
     }
     #endif
 
@@ -196,9 +218,24 @@ struct DayTimelineView: View {
             Button("この回のみ") { Task { await pending.perform(.thisOccurrence) } }
             Button("以降すべて") { Task { await pending.perform(.futureOccurrences) } }
             Button("キャンセル", role: .cancel) {}
-        } message: { _ in
-            Text("どの回の日時を変えますか？")
+        } message: { pending in
+            Text(pending.message)
         }
+        #if os(macOS)
+        // 文面は詳細編集の削除確認と揃える
+        .confirmationDialog(
+            "「\(pendingDelete?.title ?? "")」を削除しますか？",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingDelete
+        ) { item in
+            Button("削除", role: .destructive) { Task { await deleteSelection(item, span: .thisOccurrence) } }
+                .keyboardShortcut(.defaultAction)
+            Button("キャンセル", role: .cancel) {}
+        } message: { _ in
+            Text("純正アプリと共有相手からも消えます。")
+        }
+        #endif
         .overlay {
             // 列が複数の表示は空でも曜日と時間軸を見せる
             if model.mode == .day, model.hasLoaded, model.timeline.isEmpty {

@@ -20,9 +20,10 @@ enum TimelineKey {
     case moveEarlier
     case moveToPreviousDay
     case moveToNextDay
+    case deleteSelection
 
     /// キーを押し続けたときに繰り返すか。選択の移動だけ繰り返す。
-    /// 完了の切替は保存が終わる前に次が来ると同じ状態を二重に書き込むので、繰り返さない。
+    /// 完了の切替は保存が終わる前に次が来ると同じ状態を二重に書き込むので、繰り返さない。削除も 1 回押して 1 件だけ。
     var repeats: Bool {
         switch self {
         case .selectNext, .selectPrevious, .selectLeft, .selectRight: true
@@ -72,6 +73,7 @@ enum TimelineKey {
         case "h": self = .selectLeft
         case "l": self = .selectRight
         case "t": self = .showToday
+        case "d": self = .deleteSelection
         case " ": self = .toggleCompleted
         case "\r", "\u{3}": self = .openEditor
         case "\u{1b}": self = .clearSelection
@@ -206,6 +208,7 @@ struct KeyHelpView: View {
             ("space", "リマインダーを完了 / 未完了"),
             ("⇧j or ⇧↓ / ⇧k or ⇧↑", "15 分遅く / 早く"),
             ("⇧h or ⇧← / ⇧l or ⇧→", "前 / 次の日へ"),
+            ("d", "削除（確認してから消す）"),
         ]),
         Section(title: "表示", rows: [
             ("⌘← / ⌘→", "前 / 次の日（週表示では週）"),
