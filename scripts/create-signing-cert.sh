@@ -8,7 +8,14 @@ set -euo pipefail
 IDENTITY="Dayo Local Signing"
 KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
 
-if security find-identity -p codesigning "$KEYCHAIN" | grep -q "\"$IDENTITY\""; then
+# 一覧を受けてから探す（パイプで grep -q につなぐと、pipefail の下で「無い」と誤って判定し、同じ名前の証明書をもう 1 枚作ることがある）
+has_identity() {
+    local identities
+    identities="$(security find-identity -p codesigning "$KEYCHAIN")"
+    grep -q "\"$IDENTITY\"" <<< "$identities"
+}
+
+if has_identity; then
     echo "証明書「${IDENTITY}」は既にあります。"
     exit 0
 fi
@@ -41,7 +48,7 @@ P12_PASSWORD="$(uuidgen)"
 
 security import "$WORK/identity.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign
 
-if ! security find-identity -p codesigning "$KEYCHAIN" | grep -q "\"$IDENTITY\""; then
+if ! has_identity; then
     echo "証明書を取り込みましたが、コード署名用として見つかりません。" >&2
     exit 1
 fi

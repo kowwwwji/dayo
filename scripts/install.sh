@@ -8,8 +8,11 @@ IDENTITY="Dayo Local Signing"
 DEST="/Applications/Dayo.app"
 BUILT="DerivedData/Build/Products/Release/Dayo.app"
 STAGED="DerivedData/Install/Dayo.app"
+INCOMING="/Applications/.Dayo.app.incoming"
 
-if ! security find-identity -p codesigning | grep -q "\"$IDENTITY\""; then
+# 一覧を受けてから探す（パイプで grep -q につなぐと、pipefail の下で「無い」と誤って判定することがある）
+identities="$(security find-identity -p codesigning)"
+if ! grep -q "\"$IDENTITY\"" <<< "$identities"; then
     echo "署名用の証明書「${IDENTITY}」がありません。先に scripts/create-signing-cert.sh を実行してください。" >&2
     exit 1
 fi
@@ -40,8 +43,11 @@ if [ -n "$pids" ]; then
     fi
 fi
 
+# 隣に写してから入れ替える。写している途中で失敗しても、入っているアプリが残るように。
+rm -rf "$INCOMING"
+ditto "$STAGED" "$INCOMING"
 rm -rf "$DEST"
-ditto "$STAGED" "$DEST"
+mv "$INCOMING" "$DEST"
 rm -rf "$STAGED"
 
 open "$DEST"
