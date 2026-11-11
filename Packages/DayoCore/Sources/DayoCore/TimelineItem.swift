@@ -34,6 +34,8 @@ public struct TimelineItem: Identifiable, Equatable {
     public var notes: String?
     /// event のみ。場所。
     public var location: String?
+    /// 項目に付いているリンク（Google マップの経路から作った予定の経路など）。
+    public var url: URL?
     /// 保存先のリスト／カレンダーの識別子（`Destination.id` と同じ）。
     public var calendarIdentifier: String
     /// 保存先が書き込み可能か。誕生日・祝日・購読カレンダーは false。
@@ -64,6 +66,7 @@ public struct TimelineItem: Identifiable, Equatable {
         hasRecurrence: Bool? = nil,
         notes: String? = nil,
         location: String? = nil,
+        url: URL? = nil,
         calendarIdentifier: String = "",
         isEditable: Bool = true,
         priority: ReminderPriority = .none,
@@ -85,6 +88,7 @@ public struct TimelineItem: Identifiable, Equatable {
         self.hasRecurrence = hasRecurrence ?? (recurrence != nil)
         self.notes = notes
         self.location = location
+        self.url = url
         self.calendarIdentifier = calendarIdentifier
         self.isEditable = isEditable
         self.priority = priority

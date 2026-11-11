@@ -150,24 +150,31 @@ struct ItemEditorView: View {
                     .focused($titleFocused)
                     // 新規登録はタイトルを打って Enter で終わるようにする
                     .onSubmit { if model.isNew { trigger(.save) } }
-                if isEvent {
-                    HStack(spacing: 6) {
-                        TextField("場所", text: $model.location)
-                        // 欄のクリックは文字の編集に使うので、地図を開くのは隣のボタンにする
-                        if let url = model.locationMapURL {
-                            Link(destination: url) {
-                                Image(systemName: "map")
-                            }
-                            .help("Google マップで開く")
-                            .accessibilityLabel("Google マップで開く")
+                // 場所・リンク・ビデオ会議は見るだけ。押すとブラウザで開く（直すのは純正カレンダーに任せる）
+                if let url = model.locationMapURL {
+                    LabeledContent("場所") {
+                        Link(destination: url) {
+                            Label(model.location, systemImage: "map")
+                                .lineLimit(2)
+                                .multilineTextAlignment(.trailing)
                         }
+                        .help("Google マップで開く")
                     }
-                    // Google カレンダーがメモに足すビデオ会議の案内は、メモ欄には出さずリンクにする
-                    if let url = model.conferenceURL {
-                        LabeledContent("ビデオ会議") {
-                            Link(destination: url) {
-                                Label("参加", systemImage: "video")
-                            }
+                }
+                // 行き先を隠さないよう、リンクはホスト名で出す
+                if let url = model.linkURL {
+                    LabeledContent("リンク") {
+                        Link(destination: url) {
+                            Label(url.host() ?? url.absoluteString, systemImage: "link")
+                        }
+                        .help(url.absoluteString)
+                    }
+                }
+                // Google カレンダーがメモに足すビデオ会議の案内は、メモ欄には出さずリンクにする
+                if let url = model.conferenceURL {
+                    LabeledContent("ビデオ会議") {
+                        Link(destination: url) {
+                            Label("参加", systemImage: "video")
                         }
                     }
                 }

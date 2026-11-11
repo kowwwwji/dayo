@@ -27,6 +27,7 @@ extension TimelineItem {
             hasRecurrence: !rules.isEmpty,
             notes: event.notes,
             location: event.location,
+            url: event.url,
             calendarIdentifier: event.calendar?.calendarIdentifier ?? "",
             isEditable: event.calendar?.allowsContentModifications ?? false
         )

@@ -28,18 +28,23 @@ public final class ItemEditorModel {
     public var title: String
     /// メモ。Google カレンダーが足すビデオ会議の案内は除いてある（`conferenceURL` として出す）。
     public var notes: String
-    /// event のみ。
-    public var location: String
-    /// 入力中の場所を Google マップで検索する URL。場所が空なら nil。
+    /// event のみ。場所。ここでは直さず、地図を開くためだけに出す（保存時は元のまま）。
+    public var location: String { item.location?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
+    /// 場所を Google マップで検索する URL。場所が空なら nil。
     public var locationMapURL: URL? {
-        let query = location.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return nil }
+        guard !location.isEmpty else { return nil }
         var components = URLComponents(string: "https://www.google.com/maps/search/")
-        components?.queryItems = [URLQueryItem(name: "api", value: "1"), URLQueryItem(name: "query", value: query)]
+        components?.queryItems = [URLQueryItem(name: "api", value: "1"), URLQueryItem(name: "query", value: location)]
         // URLComponents は値の中の「+」をそのまま残す。受け側では空白と読まれるので、自分でエスケープする
         let encoded = components?.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         components?.percentEncodedQuery = encoded
         return components?.url
+    }
+    /// 項目に付いているリンク。ブラウザで開けるもの（http / https）だけを出す。
+    public var linkURL: URL? {
+        guard let url = item.url, let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              url.host() != nil else { return nil }
+        return url
     }
     /// メモに入っていたビデオ会議の参加用リンク。無ければ nil。
     public var conferenceURL: URL? { conference.url }
@@ -103,7 +108,6 @@ public final class ItemEditorModel {
         let conference = ConferenceNotes(item.notes ?? "")
         self.conference = conference
         notes = conference.body
-        location = item.location ?? ""
         hasDate = item.start != nil
         // 期日なしから期日ありに切り替えたときの初期値は今日の 9:00
         let defaultStart = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: now) ?? now
@@ -245,7 +249,7 @@ public final class ItemEditorModel {
             recurrence: recurrenceForDraft,
             calendarID: destinationID.isEmpty ? nil : destinationID,
             notes: conference.combined(withBody: notes),
-            location: item.kind == .event && !location.trimmingCharacters(in: .whitespaces).isEmpty ? location : nil,
+            location: item.kind == .event ? item.location : nil,
             priority: item.kind == .reminder ? priority : .none,
             // 時刻なしの期日は鳴る時刻が定まらないので付けない
             earlyReminderMinutes: item.kind == .reminder && usesDate && !isAllDay && earlyReminderMinutes > 0 ? earlyReminderMinutes : nil

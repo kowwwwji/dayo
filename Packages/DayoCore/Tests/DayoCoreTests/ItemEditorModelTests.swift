@@ -267,31 +267,41 @@ private func item(
         #expect(source.deletes[0].span == .thisOccurrence)
     }
 
-    @Test func theLocationOfAnEventIsEditedAndClearedThroughTheDraft() {
+    @Test func theLocationIsKeptAsItIsOnSave() {
         var meeting = item(kind: .event, start: date(2026, 11, 12, 10), end: date(2026, 11, 12, 11))
         meeting.location = "会議室 A"
         let model = ItemEditorModel(item: meeting, source: EditingSource(), calendar: tokyo)
 
         #expect(model.location == "会議室 A")
         #expect(model.draft.location == "会議室 A")
-
-        model.location = " "
-        #expect(model.draft.location == nil)
     }
 
     @Test func theLocationOpensAsAGoogleMapsSearch() {
         var meeting = item(kind: .event, start: date(2026, 11, 12, 10), end: date(2026, 11, 12, 11))
         meeting.location = "東京駅 丸の内口&q=x"
-        let model = ItemEditorModel(item: meeting, source: EditingSource(), calendar: tokyo)
+        let url = ItemEditorModel(item: meeting, source: EditingSource(), calendar: tokyo).locationMapURL
 
-        let url = model.locationMapURL
         #expect(url?.host() == "www.google.com")
         #expect(url?.path() == "/maps/search/")
         let items = url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems }
         #expect(items == [URLQueryItem(name: "api", value: "1"), URLQueryItem(name: "query", value: "東京駅 丸の内口&q=x")])
 
-        model.location = "  "
-        #expect(model.locationMapURL == nil)
+        meeting.location = "  "
+        #expect(ItemEditorModel(item: meeting, source: EditingSource(), calendar: tokyo).locationMapURL == nil)
+    }
+
+    @Test(arguments: [
+        ("https://maps.google.com/?daddr=35.8,140.1", true),
+        ("http://example.com/a", true),
+        ("file:///etc/passwd", false),
+        ("javascript:alert(1)", false),
+    ])
+    func onlyWebLinksAreOffered(link: String, offered: Bool) {
+        var meeting = item(kind: .event, start: date(2026, 11, 12, 10), end: date(2026, 11, 12, 11))
+        meeting.url = URL(string: link)
+        let model = ItemEditorModel(item: meeting, source: EditingSource(), calendar: tokyo)
+
+        #expect((model.linkURL != nil) == offered)
     }
 
     @Test func theConferenceBlockIsHiddenFromTheNotesAndKeptOnSave() {
