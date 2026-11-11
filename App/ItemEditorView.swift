@@ -125,6 +125,7 @@ struct ItemEditorView: View {
     @State private var pendingAction: PendingAction?
     @State private var confirmsDelete = false
     @FocusState private var titleFocused: Bool
+    @FocusState private var saveFocused: Bool
 
     private enum PendingAction { case save, delete }
 
@@ -193,6 +194,13 @@ struct ItemEditorView: View {
                 Section("メモ") {
                     TextEditor(text: $model.notes)
                         .frame(minHeight: 60)
+                        #if os(macOS)
+                        // メモは最後の入力欄なので、Tab はタブ文字ではなく保存ボタンへ進む
+                        .onKeyPress(.tab) {
+                            saveFocused = true
+                            return .handled
+                        }
+                        #endif
                 }
                 if !model.item.isEditable {
                     Text("このカレンダーは読み取り専用です（誕生日・祝日・購読など）")
@@ -219,6 +227,15 @@ struct ItemEditorView: View {
                 Button(model.isNew ? "登録" : "保存") { trigger(.save) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!model.item.isEditable || model.isSaving)
+                    #if os(macOS)
+                    // メモから Tab で来られるよう、キーボード操作の設定に関わらずフォーカスを受ける
+                    .focusable()
+                    .focused($saveFocused)
+                    .onKeyPress(.space) {
+                        trigger(.save)
+                        return .handled
+                    }
+                    #endif
             }
             .padding()
         }
