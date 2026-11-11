@@ -57,6 +57,7 @@ struct DayTimelineView: View {
         .onTimelineKey(isEnabled: model.access == .granted && editor == nil && pendingChange == nil && pendingDelete == nil,
             perform: handle)
         #endif
+        .environment(\.selectTimelineItem) { model.select($0) }
         .task { await model.activate() }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -267,7 +268,8 @@ struct DayTimelineView: View {
                         ),
                         onDoubleClick: { _ in
                             editing.openNew(at: model.day, isAllDay: true, anchor: Self.newAllDayAnchor)
-                        }
+                        },
+                        onSelect: { model.select(TimelineSelection(itemID: item.id, place: .allDay)) }
                     ) {
                         Task { await model.toggleCompleted(item) }
                     }
@@ -330,7 +332,8 @@ struct DayTimelineView: View {
             item: item,
             editing: editing,
             anchor: TimelineSelection.Place.overdue.editorAnchor,
-            isSelected: model.selection == TimelineSelection(itemID: item.id, place: .overdue)
+            isSelected: model.selection == TimelineSelection(itemID: item.id, place: .overdue),
+            onSelect: { model.select(TimelineSelection(itemID: item.id, place: .overdue)) }
         ) {
             Task { await model.toggleCompleted(item) }
         }

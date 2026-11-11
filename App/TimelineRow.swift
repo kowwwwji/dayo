@@ -10,6 +10,8 @@ struct TimelineRow: View {
     var anchor: String?
     /// キー操作で選択中か
     var isSelected = false
+    /// クリックした（Mac）。この項目を選択する
+    var onSelect: () -> Void = {}
     let onToggle: () -> Void
 
     var body: some View {
@@ -35,7 +37,7 @@ struct TimelineRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .onEditGesture { editing.open(item, at: anchor) }
+            .onItemClick(select: onSelect) { editing.open(item, at: anchor) }
             .itemEditor(for: item, editing, at: anchor)
         }
         .padding(.vertical, 2)

@@ -25,6 +25,7 @@ struct DayGridView: View {
     let onMove: (GridMove, EditSpan) -> Void
     /// 終日欄へ落とした。その日の終日にする
     let onMakeAllDay: (TimelineItem, Date) -> Void
+    @Environment(\.selectTimelineItem) private var selectItem
 
     private let hourHeight: CGFloat = 56
     private let collapsedHeight: CGFloat = 22
@@ -343,6 +344,9 @@ struct DayGridView: View {
                     distanceToGridLeft: x,
                     dayWidth: dayWidth,
                     board: board,
+                    onSelect: {
+                        selectItem(TimelineSelection(itemID: placement.id, place: .grid(day: column.day)))
+                    },
                     onToggle: { onToggle(placement.item) },
                     dropTarget: { translation in
                         dropTarget(
@@ -419,6 +423,8 @@ private struct GridItemView: View {
     let distanceToGridLeft: CGFloat
     let dayWidth: CGFloat
     let board: TimelineDragBoard
+    /// クリックした。この項目を選択する
+    let onSelect: () -> Void
     let onToggle: () -> Void
     /// 移動量（pt）から落とし先を求める
     let dropTarget: (CGSize) -> GridDropTarget
@@ -494,7 +500,7 @@ private struct GridItemView: View {
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .contentShape(Rectangle())
             .onNewItemGesture(perform: onNewItem)
-            .onEditGesture { editing.open(item, at: anchor) }
+            .onItemClick(select: onSelect) { editing.open(item, at: anchor) }
             .itemEditor(for: item, editing, at: anchor)
         case .reminder:
             // 余白は外に付けず中身の側に持たせる。丸以外の全面でダブルクリックを受けるため
@@ -529,7 +535,7 @@ private struct GridItemView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
             .contentShape(Rectangle())
-            .onEditGesture { editing.open(item, at: anchor) }
+            .onItemClick(select: onSelect) { editing.open(item, at: anchor) }
             .itemEditor(for: item, editing, at: anchor)
         }
     }

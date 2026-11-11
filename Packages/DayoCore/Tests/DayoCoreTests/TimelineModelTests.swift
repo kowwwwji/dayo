@@ -922,6 +922,52 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.selection == grid("fri", 13))
     }
 
+    @Test func selectingAnItemDirectlyMovesTheSelectionThere() async {
+        let (model, _) = await loaded([
+            event("a", "2026-11-10T09:00:00Z"),
+            event("b", "2026-11-10T12:00:00Z"),
+            event("fri", "2026-11-13T09:00:00Z"),
+        ])
+        model.selectNext()
+
+        model.select(grid("fri", 13))
+
+        #expect(model.selection == grid("fri", 13))
+        #expect(model.selectedItem?.id == "fri")
+    }
+
+    @Test func movingOnFromADirectSelectionStaysInItsColumn() async {
+        let (model, _) = await loaded([
+            event("a", "2026-11-10T09:00:00Z"),
+            event("b", "2026-11-10T12:00:00Z"),
+            event("fri", "2026-11-13T09:00:00Z"),
+        ])
+
+        model.select(grid("a", 10))
+        model.selectNext()
+
+        #expect(model.selection == grid("b", 10))
+    }
+
+    @Test func selectingAVirtualOccurrenceDirectlyKeepsTheSelection() async {
+        let source = FakeSource()
+        let pill = TimelineItem(
+            id: "薬", calendarItemIdentifier: "薬", kind: .reminder, title: "薬",
+            start: iso("2026-11-10T21:00:00Z"), end: nil, isAllDay: false, isCompleted: false, sourceName: "",
+            accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: RecurrenceSpec(frequency: .daily)
+        )
+        source.snapshots[weekStart] = TimelineSnapshot(items: [pill], overdue: [], recurring: [pill])
+        let model = TimelineModel(source: source, calendar: utc, mode: .week) { self.today }
+        await model.activate()
+        model.selectNext()
+        let virtual = model.columns.first { $0.day == day(11) }?.placements.first { $0.item.isVirtual }
+
+        model.select(TimelineSelection(itemID: virtual?.id ?? "", place: .grid(day: day(11))))
+
+        #expect(virtual != nil)
+        #expect(model.selection == grid("薬", 10))
+    }
+
     @Test func clearSelectionDeselects() async {
         let (model, _) = await loaded([item("a", start: iso("2026-11-10T09:00:00Z"))])
         model.selectNext()

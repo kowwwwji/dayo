@@ -219,6 +219,18 @@ public final class TimelineModel {
         await selectSideways(by: 1)
     }
 
+    /// 指した項目を選択する（クリック）。繰り返しの将来回など、選択できない項目なら何も変えない。
+    public func select(_ selection: TimelineSelection) {
+        // 期限切れ欄と終日の帯は列に属さない。上下へ動くときに戻る列は、いまの列（無ければ今日か最初の日）にする
+        let day: Date? = if case .grid(let day) = selection.place {
+            day
+        } else {
+            cursorPosition?.day ?? (containsToday ? calendar.startOfDay(for: now()) : days.first)
+        }
+        guard let day, let position = cursor.resolve(.init(selection: selection, day: day)) else { return }
+        cursorPosition = position
+    }
+
     public func clearSelection() {
         cursorPosition = nil
     }

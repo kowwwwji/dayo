@@ -52,6 +52,7 @@ struct WeekHeaderView: View {
     let onMoveDays: (TimelineItem, Int) -> Void
     /// 終日の項目を時間軸へ落とした。日と開始分
     let onMakeTimed: (TimelineItem, Date, Int) -> Void
+    @Environment(\.selectTimelineItem) private var selectItem
 
     private let laneHeight: CGFloat = 26
     /// 終日の帯をそのまま見せる段数。超えた分は内部スクロール。
@@ -123,7 +124,8 @@ struct WeekHeaderView: View {
                             ),
                             onDoubleClick: { x in
                                 openNewItem(atColumn: span.firstColumn + Int(x / max(1, dayWidth)))
-                            }
+                            },
+                            onSelect: { selectItem(TimelineSelection(itemID: span.item.id, place: .allDay)) }
                         ) { onToggle(span.item) }
                             .frame(width: max(0, dayWidth * CGFloat(span.columnSpan) - 3), alignment: .leading)
                             .offset(x: dayWidth * CGFloat(span.firstColumn), y: CGFloat(span.lane) * laneHeight)

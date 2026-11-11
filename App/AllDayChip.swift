@@ -13,6 +13,8 @@ struct AllDayChip: View {
     var drag: AllDayChipDrag?
     /// チップの上をダブルクリックした（Mac）。引数はチップの左端からの距離。帯のどの日を押したかを求めるのに使う
     var onDoubleClick: ((CGFloat) -> Void)?
+    /// クリックした（Mac）。この項目を選択する
+    var onSelect: () -> Void = {}
     let onToggle: () -> Void
 
     /// `@GestureState` はジェスチャが中断されても自動で nil に戻る
@@ -75,7 +77,7 @@ struct AllDayChip: View {
         .coordinateSpace(name: Self.space)
         .selectionRing(isSelected)
         .contentShape(Rectangle())
-        .onEditGesture { editing.open(item, at: Self.anchor) }
+        .onItemClick(select: onSelect) { editing.open(item, at: Self.anchor) }
         .itemEditor(for: item, editing, at: Self.anchor)
         .opacity(item.isVirtual ? 0.45 : opacityWhileDragging)
         .offset(x: shiftWhileDragging)
