@@ -151,7 +151,17 @@ struct ItemEditorView: View {
                     // 新規登録はタイトルを打って Enter で終わるようにする
                     .onSubmit { if model.isNew { trigger(.save) } }
                 if isEvent {
-                    TextField("場所", text: $model.location)
+                    HStack(spacing: 6) {
+                        TextField("場所", text: $model.location)
+                        // 欄のクリックは文字の編集に使うので、地図を開くのは隣のボタンにする
+                        if let url = model.locationMapURL {
+                            Link(destination: url) {
+                                Image(systemName: "map")
+                            }
+                            .help("Google マップで開く")
+                            .accessibilityLabel("Google マップで開く")
+                        }
+                    }
                     // Google カレンダーがメモに足すビデオ会議の案内は、メモ欄には出さずリンクにする
                     if let url = model.conferenceURL {
                         LabeledContent("ビデオ会議") {

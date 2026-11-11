@@ -30,6 +30,17 @@ public final class ItemEditorModel {
     public var notes: String
     /// event のみ。
     public var location: String
+    /// 入力中の場所を Google マップで検索する URL。場所が空なら nil。
+    public var locationMapURL: URL? {
+        let query = location.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return nil }
+        var components = URLComponents(string: "https://www.google.com/maps/search/")
+        components?.queryItems = [URLQueryItem(name: "api", value: "1"), URLQueryItem(name: "query", value: query)]
+        // URLComponents は値の中の「+」をそのまま残す。受け側では空白と読まれるので、自分でエスケープする
+        let encoded = components?.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+        components?.percentEncodedQuery = encoded
+        return components?.url
+    }
     /// メモに入っていたビデオ会議の参加用リンク。無ければ nil。
     public var conferenceURL: URL? { conference.url }
     private var conference: ConferenceNotes

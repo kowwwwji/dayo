@@ -279,6 +279,21 @@ private func item(
         #expect(model.draft.location == nil)
     }
 
+    @Test func theLocationOpensAsAGoogleMapsSearch() {
+        var meeting = item(kind: .event, start: date(2026, 11, 12, 10), end: date(2026, 11, 12, 11))
+        meeting.location = "東京駅 丸の内口&q=x"
+        let model = ItemEditorModel(item: meeting, source: EditingSource(), calendar: tokyo)
+
+        let url = model.locationMapURL
+        #expect(url?.host() == "www.google.com")
+        #expect(url?.path() == "/maps/search/")
+        let items = url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems }
+        #expect(items == [URLQueryItem(name: "api", value: "1"), URLQueryItem(name: "query", value: "東京駅 丸の内口&q=x")])
+
+        model.location = "  "
+        #expect(model.locationMapURL == nil)
+    }
+
     @Test func theConferenceBlockIsHiddenFromTheNotesAndKeptOnSave() {
         let line = "-::~:~::~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~::~:~::-"
         let block = "\(line)\nGoogle Meet に参加: https://meet.google.com/abc-defg-hij\n\(line)"
