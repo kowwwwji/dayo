@@ -33,19 +33,12 @@ public final class TimelineModel {
     /// （前の範囲の内容で帯の有無を決めると、読み込み後に位置がずれる）。
     public var isLoadedForRange: Bool { loadedRange == range }
     public private(set) var errorMessage: String?
-    /// `refresh()` の状態。画面で「更新中」と結果を示すのに使う。
-    public enum RefreshState: Sendable {
-        case idle
-        /// 同期元からの変更を待っている。
-        case refreshing
-        /// 待っても変更が届かなかった。同期元に変更が無かった場合と、取り込めなかった場合の区別は付かない。
-        case timedOut
-    }
-    public private(set) var refreshState: RefreshState = .idle
+    /// `refresh()` が同期元からの変更を待っている間だけ true。画面で「更新中」を示すのに使う。
+    public private(set) var isRefreshing = false
     /// 変更が届くのを待つ長さ。
     private let refreshWait: Duration
     /// 変更の到着を待っている `refresh()`。届いたら、または待ち時間を過ぎたら再開する。
-    private var changeWaiters: [UUID: CheckedContinuation<Bool, Never>] = [:]
+    private var changeWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
 
     /// キー操作で選択中の項目。画面から消えたら外れる。
     public var selection: TimelineSelection? { cursorPosition?.selection }
@@ -131,24 +124,24 @@ public final class TimelineModel {
 
     /// 同期を待たずに最新を見たいときに呼ぶ。同期元へ取り込みを頼み、いま手元にある内容で読み直してから、
     /// 取り込みで届く変更（変更通知で読み直される）を待つ。取り込みの完了は取得元から知らされないので、
-    /// 変更が届いたら終わり、`refreshWait` のあいだ届かなければ `timedOut` で終わる。
+    /// 変更が届いたら終わり、`refreshWait` のあいだ届かなければそこで待つのをやめる
+    /// （同期元に変更が無かった場合と取り込めなかった場合の区別は付かないので、どちらも黙って終える）。
     public func refresh() async {
-        refreshState = .refreshing
+        isRefreshing = true
         await source.refresh()
         await load()
-        let arrived = await waitForChange()
+        await waitForChange()
         // 重ねて呼ばれたら、最後の 1 つが終わるまで更新中のままにする
-        guard changeWaiters.isEmpty else { return }
-        refreshState = arrived ? .idle : .timedOut
+        if changeWaiters.isEmpty { isRefreshing = false }
     }
 
-    private func waitForChange() async -> Bool {
+    private func waitForChange() async {
         let id = UUID()
-        return await withCheckedContinuation { continuation in
+        await withCheckedContinuation { continuation in
             changeWaiters[id] = continuation
             Task { [weak self, refreshWait] in
                 try? await Task.sleep(for: refreshWait)
-                self?.changeWaiters.removeValue(forKey: id)?.resume(returning: false)
+                self?.changeWaiters.removeValue(forKey: id)?.resume()
             }
         }
     }
@@ -156,7 +149,7 @@ public final class TimelineModel {
     private func resumeChangeWaiters() {
         let waiters = changeWaiters
         changeWaiters = [:]
-        waiters.values.forEach { $0.resume(returning: true) }
+        waiters.values.forEach { $0.resume() }
     }
 
     public func load() async {
