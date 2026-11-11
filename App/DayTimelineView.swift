@@ -131,12 +131,21 @@ struct DayTimelineView: View {
         alert.messageText = "「\(item.title)」を削除しますか？"
         let delete = alert.addButton(withTitle: "削除")
         // 消す操作だと分かるよう赤で出す。既定のボタンは色の指定を受け付けないので、OS の「破壊的操作」の見た目に任せる
-        // （return は最初のボタンに割り当てられたままなので、削除として効く）
         delete.hasDestructiveAction = true
         let cancel = alert.addButton(withTitle: "キャンセル")
         cancel.keyEquivalent = "\u{1b}"
         alert.window.initialFirstResponder = delete
+        // 破壊的操作のボタンは return の割り当てを外される。return で削除できるよう、ダイアログが出ている間だけキーを見て受ける
+        let sheet = alert.window
+        let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let isReturn = event.keyCode == 36 || event.keyCode == 76
+            let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+            guard isReturn, modifiers.isEmpty, event.window === sheet else { return event }
+            window.endSheet(sheet, returnCode: .alertFirstButtonReturn)
+            return nil
+        }
         alert.beginSheetModal(for: window) { response in
+            if let monitor { NSEvent.removeMonitor(monitor) }
             guard response == .alertFirstButtonReturn else { return }
             Task { await deleteSelection(item, span: .thisOccurrence) }
         }
