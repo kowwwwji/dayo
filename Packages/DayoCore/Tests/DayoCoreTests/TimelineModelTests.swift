@@ -1845,14 +1845,26 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.isLoadedForRange)
     }
 
-    @Test func previousAndNextMoveByOneDay() async {
+    @Test func previousAndNextMoveByThreeDays() async {
         let source = FakeSource()
         let model = makeModel(source) { self.today }
 
         await model.showNext()
+        #expect(model.columns.map(\.day) == [day(13), day(14), day(15)])
+        await model.showPrevious()
+        await model.showPrevious()
+
+        #expect(model.columns.map(\.day) == [day(7), day(8), day(9)])
+    }
+
+    @Test func followingTheSelectionMovesByOneDay() async {
+        let source = FakeSource()
+        let model = makeModel(source) { self.today }
+
+        await model.showAdjacent(by: 1)
         #expect(model.columns.map(\.day) == [day(11), day(12), day(13)])
-        await model.showPrevious()
-        await model.showPrevious()
+        await model.showAdjacent(by: -1)
+        await model.showAdjacent(by: -1)
 
         #expect(model.columns.map(\.day) == [day(9), today, day(11)])
         #expect(source.requests.map(\.range.start) == [day(11), today, day(9)])
@@ -1864,13 +1876,13 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         let model = makeModel(source) { self.today }
 
         // 今日が右端（8・9・10）→ 外れる（7・8・9）→ 今日が左端 → 外れる（11・12・13）
-        await model.showPrevious()
-        await model.showPrevious()
+        await model.showAdjacent(by: -1)
+        await model.showAdjacent(by: -1)
         #expect(model.containsToday)
-        await model.showPrevious()
+        await model.showAdjacent(by: -1)
         #expect(model.containsToday == false)
         await model.showToday()
-        await model.showNext()
+        await model.showAdjacent(by: 1)
 
         #expect(source.requests.map(\.includingOverdue) == [true, true, false, true, false])
     }
@@ -1884,7 +1896,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         )
         let model = makeModel(source) { iso("2026-11-10T08:00:00Z") }
 
-        await model.showPrevious()
+        await model.showAdjacent(by: -1)
 
         #expect(model.timeline.overdue.map(\.id) == ["先週", "昨日"])
         #expect(model.columns[0].placements.map(\.id) == ["昨日"])
@@ -1893,8 +1905,8 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
     @Test func switchingFromDayPutsThatDayAtTheLeft() async {
         let source = FakeSource()
         let model = makeModel(source, mode: .day) { self.today }
-        await model.showNext()
-        await model.showNext()
+        await model.showAdjacent(by: 1)
+        await model.showAdjacent(by: 1)
 
         await model.setMode(.threeDays)
 
@@ -1916,7 +1928,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
     @Test func switchingFromAnotherWeekKeepsItsDayAtTheLeft() async {
         let source = FakeSource()
         let model = makeModel(source, mode: .week) { self.today }
-        await model.showNext()
+        await model.showAdjacent(by: 1)
 
         await model.setMode(.threeDays)
 
@@ -1927,7 +1939,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
     @Test func switchingToDayShowsTodayWhenTheThreeDaysContainIt() async {
         let source = FakeSource()
         let model = makeModel(source) { self.today }
-        await model.showPrevious()
+        await model.showAdjacent(by: -1)
 
         await model.setMode(.day)
 
@@ -1937,7 +1949,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
     @Test func switchingToDayKeepsTheLeftDayWhenTodayIsNotShown() async {
         let source = FakeSource()
         let model = makeModel(source) { self.today }
-        await model.showNext()
+        await model.showAdjacent(by: 1)
 
         await model.setMode(.day)
 
@@ -1948,7 +1960,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         let source = FakeSource()
         // 日曜（週の始まり）が今日。土・日・月を見ていても、週表示は今日の週にする
         let model = makeModel(source) { self.weekStart }
-        await model.showPrevious()
+        await model.showAdjacent(by: -1)
         #expect(model.day == day(7))
 
         await model.setMode(.week)
@@ -1960,7 +1972,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
     @Test func switchingBackFromThreeDaysWithTodayInTheMiddlePutsTodayAtTheLeft() async {
         let source = FakeSource()
         let model = makeModel(source) { self.today }
-        await model.showPrevious()
+        await model.showAdjacent(by: -1)
 
         await model.setMode(.week)
         await model.setMode(.threeDays)
@@ -1986,7 +1998,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         var now = today
         let model = makeModel(source) { now }
         // 今日が真ん中（9・10・11）。日付が変わっても、自分でずらした並びは動かさない
-        await model.showPrevious()
+        await model.showAdjacent(by: -1)
 
         now = day(11)
         await model.handleDayChanged()
@@ -1998,7 +2010,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         let source = FakeSource()
         var now = today
         let model = makeModel(source) { now }
-        await model.showNext()
+        await model.showAdjacent(by: 1)
 
         now = day(11)
         await model.handleDayChanged()
@@ -2011,7 +2023,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
     @Test func todayButtonPutsTodayAtTheLeft() async {
         let source = FakeSource()
         let model = makeModel(source) { iso("2026-11-10T15:00:00Z") }
-        await model.showPrevious()
+        await model.showAdjacent(by: -1)
 
         await model.showToday()
 
@@ -2024,7 +2036,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.isAlignedWithToday)
 
         // 今日が真ん中。見えてはいるが、「今日」で左端へ戻せる
-        await model.showPrevious()
+        await model.showAdjacent(by: -1)
         #expect(model.containsToday)
         #expect(model.isAlignedWithToday == false)
 
