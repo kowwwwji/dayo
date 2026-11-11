@@ -27,7 +27,7 @@ final class TimelineDragBoard {
     @ObservationIgnored var gridVisibleFrame: CGRect = .zero
     @ObservationIgnored var axis: DayGridAxis?
     @ObservationIgnored var days: [Date] = []
-    /// 週表示の見出しのうち、日の列が並ぶ範囲。日表示では nil。
+    /// 終日欄のうち、日の列が並ぶ範囲（週表示は曜日の行も含む見出し全体）。
     @ObservationIgnored var allDayFrame: CGRect?
 
     /// 時間軸の上なら、その位置の日と開始分（15 分刻み。`duration` 分が日の中・帯の外に収まるよう寄せる）。
@@ -42,7 +42,7 @@ final class TimelineDragBoard {
         return (days[index], minute)
     }
 
-    /// 週表示の見出しの上なら、その位置の日。
+    /// 終日欄の上なら、その位置の日。
     func allDayTarget(at point: CGPoint) -> Date? {
         guard let allDayFrame, allDayFrame.contains(point), !days.isEmpty else { return nil }
         let index = Int((point.x - allDayFrame.minX) / (allDayFrame.width / CGFloat(days.count)))

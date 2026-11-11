@@ -29,7 +29,6 @@ struct WeekHeaderView: View {
 
     private var spanLaneCount: Int { (spans.map(\.lane).max() ?? -1) + 1 }
     private var showsNewChip: Bool { newDay != nil && editing.isOpenForNew(at: Self.newItemAnchor) }
-    /// 仮のチップは既存の帯の下の段に置く。
     private var laneCount: Int { max(1, spanLaneCount + (showsNewChip ? 1 : 0)) }
 
     var body: some View {
@@ -45,7 +44,6 @@ struct WeekHeaderView: View {
                 .padding(.leading, DayGridView.labelWidth)
                 .padding(.trailing, DayGridView.trailingInset)
         }
-        .onDisappear { board.allDayFrame = nil }
         .onChange(of: days) { _, _ in newDay = nil }
         .onReceive(clock) { now = $0 }
     }
@@ -100,7 +98,11 @@ struct WeekHeaderView: View {
                             .frame(width: max(0, dayWidth * CGFloat(span.columnSpan) - 3), alignment: .leading)
                             .offset(x: dayWidth * CGFloat(span.firstColumn), y: CGFloat(span.lane) * laneHeight)
                     }
-                    newItemChip(dayWidth: dayWidth)
+                    // 仮のチップは既存の帯の下の段に置く
+                    if showsNewChip, let newDay, let index = days.firstIndex(of: newDay) {
+                        NewItemChip(editing: editing, anchor: Self.newItemAnchor, width: max(0, dayWidth - 3))
+                            .offset(x: dayWidth * CGFloat(index), y: CGFloat(spanLaneCount) * laneHeight)
+                    }
                 }
             }
             .frame(height: CGFloat(laneCount) * laneHeight)
@@ -128,24 +130,5 @@ struct WeekHeaderView: View {
                 newDay = days[index]
                 editing.openNew(at: days[index], isAllDay: true, anchor: Self.newItemAnchor)
             })
-    }
-
-    /// 新規登録中の仮のチップ。エディタはここから出す。入力中のタイトルと種別を映す。
-    @ViewBuilder
-    private func newItemChip(dayWidth: CGFloat) -> some View {
-        if showsNewChip, let newDay, let index = days.firstIndex(of: newDay) {
-            let editor = editing.editor
-            let title = editor?.title ?? ""
-            Text(title.isEmpty ? (editor?.kind == .reminder ? "新規リマインダー" : "新規予定") : title)
-                .font(.dayoTitle.weight(.semibold))
-                .lineLimit(1)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 4)
-                .frame(width: max(0, dayWidth - 3), alignment: .leading)
-                .background(.tint.opacity(0.25), in: RoundedRectangle(cornerRadius: 5))
-                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.tint, lineWidth: 1))
-                .newItemEditor(editing, at: Self.newItemAnchor)
-                .offset(x: dayWidth * CGFloat(index), y: CGFloat(spanLaneCount) * laneHeight)
-        }
     }
 }

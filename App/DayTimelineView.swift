@@ -96,6 +96,15 @@ struct DayTimelineView: View {
 
     private var sections: some View {
         VStack(spacing: 0) {
+            // 期限切れを上、終日を時間軸のすぐ上に置く。終日欄は時間軸とドラッグで行き来するので隣り合わせにする
+            if !model.timeline.overdue.isEmpty {
+                // 1 行およそ 40pt。多くても 3 行半で止めて残りはスクロール
+                PinnedSection(title: "期限切れ", scrollHeight: min(CGFloat(model.timeline.overdue.count) * 40, 140)) {
+                    ForEach(model.timeline.overdue) { row($0, isOverdue: true) }
+                }
+                Divider()
+            }
+            // 終日欄は空でも出す。ダブルクリックでの登録と、時間軸からのドラッグの落とし先になるため
             if model.mode == .week {
                 // 列と見出しがずれないよう、日付はモデルの範囲ではなく実際に並んでいる列から取る
                 WeekHeaderView(
@@ -109,35 +118,10 @@ struct DayTimelineView: View {
                     },
                     onMakeTimed: makeTimed
                 )
-                Divider()
-            } else if !model.timeline.allDay.isEmpty {
-                PinnedSection(title: "終日") {
-                    FlowLayout(spacing: 6) {
-                        ForEach(model.timeline.allDay) { item in
-                            // 日表示は列が 1 つなので横には動かせない。時間軸へ落とすことだけできる
-                            AllDayChip(
-                                item: item,
-                                editing: editing,
-                                drag: AllDayChipDrag(
-                                    board: board,
-                                    onMoveDays: { _ in },
-                                    onMakeTimed: { day, minute in makeTimed(item, day, minute) }
-                                )
-                            ) {
-                                Task { await model.toggleCompleted(item) }
-                            }
-                        }
-                    }
-                }
-                Divider()
+            } else {
+                dayAllDay
             }
-            if !model.timeline.overdue.isEmpty {
-                // 1 行およそ 40pt。多くても 3 行半で止めて残りはスクロール
-                PinnedSection(title: "期限切れ", scrollHeight: min(CGFloat(model.timeline.overdue.count) * 40, 140)) {
-                    ForEach(model.timeline.overdue) { row($0, isOverdue: true) }
-                }
-                Divider()
-            }
+            Divider()
             timed
         }
         .overlay { DragGhostView(board: board) }
@@ -159,6 +143,45 @@ struct DayTimelineView: View {
             if model.mode == .day, model.hasLoaded, model.timeline.isEmpty {
                 ContentUnavailableView("予定も Todo もありません", systemImage: "checkmark.circle")
             }
+        }
+    }
+
+    /// 日表示の終日欄で新規登録のエディタを開く場所のキー。
+    private static let newAllDayAnchor = "allDay-new"
+
+    /// 日表示の終日欄。チップを左から並べる。
+    private var dayAllDay: some View {
+        PinnedSection(title: "終日") {
+            FlowLayout(spacing: 6) {
+                ForEach(model.timeline.allDay) { item in
+                    // 日表示は列が 1 つなので横には動かせない。時間軸へ落とすことだけできる
+                    AllDayChip(
+                        item: item,
+                        editing: editing,
+                        drag: AllDayChipDrag(
+                            board: board,
+                            onMoveDays: { _ in },
+                            onMakeTimed: { day, minute in makeTimed(item, day, minute) }
+                        )
+                    ) {
+                        Task { await model.toggleCompleted(item) }
+                    }
+                }
+                NewItemChip(editing: editing, anchor: Self.newAllDayAnchor)
+            }
+            .frame(maxWidth: .infinity, minHeight: 24, alignment: .topLeading)
+            #if os(macOS)
+            // 空いているところのダブルクリックで、この日の終日として登録を開く。チップより下なのでチップの上では反応しない
+            .background {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(TapGesture(count: 2).onEnded {
+                        editing.openNew(at: model.day, isAllDay: true, anchor: Self.newAllDayAnchor)
+                    })
+            }
+            #endif
+            // 時間軸からここへ落とした項目を終日にする
+            .onFrameChange { board.allDayFrame = $0 }
         }
     }
 

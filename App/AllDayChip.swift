@@ -135,6 +135,32 @@ struct AllDayChipDrag {
     let onMakeTimed: (Date, Int) -> Void
 }
 
+/// 終日欄で新規登録中の仮のチップ。エディタはここから出す。入力中のタイトルと種別を映す。
+/// その場所で新規登録を開いていなければ何も描かない。
+struct NewItemChip: View {
+    let editing: ItemEditing
+    /// エディタを開く場所のキー
+    let anchor: String
+    /// 帯として幅を決めるとき。nil なら中身の幅
+    var width: CGFloat?
+
+    var body: some View {
+        if editing.isOpenForNew(at: anchor) {
+            let editor = editing.editor
+            let title = editor?.title ?? ""
+            Text(title.isEmpty ? (editor?.kind == .reminder ? "新規リマインダー" : "新規予定") : title)
+                .font(.dayoTitle.weight(.semibold))
+                .lineLimit(1)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .frame(width: width, alignment: .leading)
+                .background(.tint.opacity(0.25), in: RoundedRectangle(cornerRadius: 5))
+                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.tint, lineWidth: 1))
+                .newItemEditor(editing, at: anchor)
+        }
+    }
+}
+
 /// 優先度の「!」。純正アプリと同じくアクセント色で、なしのときは何も出さない。
 struct PriorityMark: View {
     let priority: ReminderPriority

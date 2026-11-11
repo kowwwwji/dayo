@@ -21,7 +21,7 @@ struct DayGridView: View {
     let onToggle: (TimelineItem) -> Void
     /// ドラッグで落とした。繰り返し予定ならどの回に及ぶかも渡す
     let onMove: (GridMove, EditSpan) -> Void
-    /// 週表示の終日欄へ落とした。その日の終日にする
+    /// 終日欄へ落とした。その日の終日にする
     let onMakeAllDay: (TimelineItem, Date) -> Void
 
     private let hourHeight: CGFloat = 56
@@ -384,7 +384,7 @@ private struct GridItemView: View {
     /// 移動量（pt）から落とし先を求める
     let dropTarget: (CGSize) -> GridDropTarget
     let onDrop: (GridDropTarget) -> Void
-    /// 週表示の終日欄へ落とした。その日
+    /// 終日欄へ落とした。その日
     let onDropAllDay: (Date) -> Void
 
     /// `@GestureState` はジェスチャが中断（スクロール開始・ウィンドウ切替）されても自動で 0 に戻る
