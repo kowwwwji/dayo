@@ -13,6 +13,7 @@ struct RootView: View {
     @AppStorage(DayTitle.showsWeekNumberKey) private var showsWeekNumber = true
     #if os(macOS)
     @AppStorage(SidebarSetting.hiddenKey) private var sidebarHidden = false
+    @State private var undatedDrag = UndatedDrag()
     #endif
 
     private var title: String {
@@ -29,6 +30,7 @@ struct RootView: View {
             get: { sidebarHidden ? .detailOnly : .all },
             set: { sidebarHidden = $0 == .detailOnly }
         )) {
+            VStack(spacing: 0) {
             // 表示（日 / 3 日 / 週）と、出すカレンダーをここで切り替える
             List(selection: Binding<TimelineMode?>(
                 get: { model.mode },
@@ -42,6 +44,12 @@ struct RootView: View {
                 // 見なくてよいカレンダーを隠して、列の幅を空ける
                 SidebarCalendars(model: model)
             }
+            // 時間軸に載らない期日なしのリマインダー。ここからタイムラインへドラッグして期日を付ける。
+            // `List` の行にすると、ドラッグで出ていった行が戻ってきても次のクリックまで描かれないので、`List` の外に置く
+            SidebarUndated(
+                model: model, drag: undatedDrag, makeEditor: makeEditor, makeNewEditor: makeNewEditor
+            )
+            }
             .navigationSplitViewColumnWidth(min: 160, ideal: 200)
         } detail: {
             VStack(spacing: 0) {
@@ -51,7 +59,8 @@ struct RootView: View {
                 }
                 Divider()
                 DayTimelineView(
-                    model: model, makeEditor: makeEditor, makeNewEditor: makeNewEditor, dateJump: dateJump
+                    model: model, makeEditor: makeEditor, makeNewEditor: makeNewEditor, dateJump: dateJump,
+                    undatedDrag: undatedDrag
                 )
             }
             .navigationTitle(title)

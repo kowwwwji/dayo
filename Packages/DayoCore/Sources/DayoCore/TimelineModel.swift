@@ -40,6 +40,8 @@ public final class TimelineModel {
     public private(set) var day: Date
     /// 表示範囲の項目（将来回の仮想項目を含む）をセクションに振り分けたもの。
     public private(set) var timeline = DayTimeline(items: [], overdue: [])
+    /// 期日の無い未完了リマインダー。時間軸には載らないので、サイドバーに出す。リスト名 → タイトルの順。
+    public private(set) var undated: [TimelineItem] = []
     /// 表示範囲の日ごとの列。日表示なら 1 列。
     public private(set) var columns: [TimelineColumn] = []
     /// 終日欄の帯。列が複数の表示で使う。
@@ -229,6 +231,7 @@ public final class TimelineModel {
             let virtual = futureOccurrences(of: snapshot.recurring, in: range)
             let selected = cursorPosition.flatMap { position in selectedItem.map { (position: position, item: $0) } }
             timeline = DayTimeline(items: snapshot.items + virtual, overdue: snapshot.overdue + overdueInRange)
+            undated = fetched.undated.filter(isShown).sorted(by: Self.listThenTitle)
             hidePendingDeletion()
             layOut()
             // 予定の id は開始日時を含む。動かした直後の表示（古い id のまま日時だけ変えたもの）を読み直すと別の id になるので、
@@ -252,6 +255,7 @@ public final class TimelineModel {
             timeline = DayTimeline(
                 items: (timeline.allDay + timeline.timed).filter(isShown), overdue: timeline.overdue.filter(isShown)
             )
+            undated = undated.filter(isShown)
             layOut()
             // 進行中の読み込みが、隠す前の内容で上書きしないようにする
             loadGeneration += 1
@@ -263,6 +267,14 @@ public final class TimelineModel {
 
     private func isShown(_ item: TimelineItem) -> Bool {
         !hiddenCalendarIDs.contains(item.calendarIdentifier)
+    }
+
+    private static func listThenTitle(_ a: TimelineItem, _ b: TimelineItem) -> Bool {
+        for order in [a.sourceName.localizedStandardCompare(b.sourceName), a.title.localizedStandardCompare(b.title)]
+        where order != .orderedSame {
+            return order == .orderedAscending
+        }
+        return a.id < b.id
     }
 
     /// 失敗しても一覧が古いままになるだけなので、エラーは表示しない。
@@ -302,12 +314,13 @@ public final class TimelineModel {
             // 取得元は開始日時で項目を引き直すので、動かした後の項目を渡す。画面にあればいまの内容を使い、
             // 動かしたあとの編集（タイトルなど）を巻き戻さない。予定は回ごとに別の項目なので開始日時も合わせる。
             // リマインダーは 1 つのオブジェクトなので、そのあと日時を変えていても同じものを指す
-            let current = (timeline.allDay + timeline.timed + timeline.overdue).first {
+            let current = (timeline.allDay + timeline.timed + timeline.overdue + undated).first {
                 $0.calendarItemIdentifier == moved.calendarItemIdentifier && !$0.isVirtual
                     && (moved.kind == .reminder || $0.start == moved.start)
             } ?? moved
-            guard let draft = ItemDraft(restoring: original, on: current), let start = draft.start,
-                  await apply(draft, to: current, span: span, recordsUndo: false)
+            let draft = ItemDraft(restoring: original, on: current)
+            // 期日なしへ戻した項目は一覧に出るだけで、時間軸に選ぶ先が無い
+            guard await apply(draft, to: current, span: span, recordsUndo: false), let start = draft.start
             else { return }
             let day = calendar.startOfDay(for: start)
             let place: TimelineSelection.Place = draft.isAllDay ? .allDay : .grid(day: day)
@@ -379,17 +392,17 @@ public final class TimelineModel {
         await apply(ItemDraft(moving: item, to: shifted, isAllDay: true), to: item, span: span)
     }
 
-    /// 終日の項目を時間軸へ落とした。その日のその時刻から始まる時刻付きの項目にする。
+    /// 終日の項目か、期日の無いリマインダーを時間軸へ落とした。その日のその時刻から始まる時刻付きの項目にする。
     public func makeTimed(_ item: TimelineItem, onDay day: Date, startMinute minute: Int, span: EditSpan) async {
-        guard isChangeable(item), item.isAllDay,
+        guard isChangeable(item), item.isAllDay || item.start == nil,
               let start = calendar.date(byAdding: .minute, value: minute, to: calendar.startOfDay(for: day))
         else { return }
         await apply(ItemDraft(scheduling: item, at: start), to: item, span: span)
     }
 
-    /// 時刻付きの項目を終日欄へ落とした。その日の終日にする。
+    /// 時刻付きの項目か、期日の無いリマインダーを終日欄へ落とした。その日の終日にする。
     public func makeAllDay(_ item: TimelineItem, onDay day: Date, span: EditSpan) async {
-        guard isChangeable(item), !item.isAllDay, item.start != nil else { return }
+        guard isChangeable(item), !item.isAllDay else { return }
         await apply(ItemDraft(makingAllDay: item, on: calendar.startOfDay(for: day)), to: item, span: span)
     }
 
@@ -545,6 +558,7 @@ public final class TimelineModel {
         timeline = DayTimeline(
             items: (timeline.allDay + timeline.timed).filter(isShown), overdue: timeline.overdue.filter(isShown)
         )
+        undated = undated.filter(isShown)
     }
 
     /// 選択中の時刻付きの項目を、次（`direction` が正）/ 前の 15 分の区切りへ動かす。日の外へは出さない。
@@ -712,9 +726,13 @@ public final class TimelineModel {
     @discardableResult
     private func apply(_ draft: ItemDraft, to item: TimelineItem, span: EditSpan, recordsUndo: Bool = true) async -> Bool {
         let previous = timeline
+        let previousUndated = undated
         let updated = self.item(item, rescheduledBy: draft)
         let others = (timeline.allDay + timeline.timed).filter { $0.id != item.id }
+        // 期日の無い項目は `DayTimeline` が時間軸から落とすので、一覧の側へ入れる
         timeline = DayTimeline(items: others + [updated], overdue: timeline.overdue)
+        undated = (undated.filter { $0.id != item.id } + (updated.start == nil ? [updated] : []))
+            .sorted(by: Self.listThenTitle)
         layOut()
         // 進行中の読み込み（同期通知など）が古い内容で楽観更新を上書きしないようにする
         loadGeneration += 1
@@ -727,6 +745,7 @@ public final class TimelineModel {
         } catch {
             // まず元に戻し、読み直しが失敗しても動いたままに見えないようにする。メッセージは load が消すので最後に
             timeline = previous
+            undated = previousUndated
             layOut()
             await load()
             errorMessage = error.localizedDescription

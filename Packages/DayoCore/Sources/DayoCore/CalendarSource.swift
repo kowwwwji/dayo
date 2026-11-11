@@ -48,16 +48,21 @@ public enum CalendarSourceError: LocalizedError, Equatable {
 }
 
 /// 1 回の取得結果。`items` は期間に属するもの、`overdue` は期間より前に期日が過ぎた未完了リマインダー、
-/// `recurring` は将来回を展開する元（`VirtualOccurrences.sources`）。
+/// `recurring` は将来回を展開する元（`VirtualOccurrences.sources`）、
+/// `undated` は期日の無い未完了リマインダー（期間に関わらず全件）。
 public struct TimelineSnapshot: Equatable {
     public var items: [TimelineItem]
     public var overdue: [TimelineItem]
     public var recurring: [TimelineItem]
+    public var undated: [TimelineItem]
 
-    public init(items: [TimelineItem], overdue: [TimelineItem], recurring: [TimelineItem] = []) {
+    public init(
+        items: [TimelineItem], overdue: [TimelineItem], recurring: [TimelineItem] = [], undated: [TimelineItem] = []
+    ) {
         self.items = items
         self.overdue = overdue
         self.recurring = recurring
+        self.undated = undated
     }
 
     public static let empty = TimelineSnapshot(items: [], overdue: [])
@@ -110,7 +115,7 @@ public protocol CalendarSource {
     func requestAccess() async throws -> AccessStatus
     /// 期間に属する予定・リマインダー（`TimelineItem.falls(in:)` の規則）を 1 回の取得で返す。
     /// `includingOverdue` なら期間より前に期日が過ぎた未完了リマインダーも `overdue` に入れる。
-    /// `recurring` は常に入れる。
+    /// `recurring` と `undated` は常に入れる。
     func snapshot(for range: DateInterval, includingOverdue: Bool) async throws -> TimelineSnapshot
     /// リマインダーの完了状態を変える。反映は呼び出し側で再取得する。
     func setCompleted(_ completed: Bool, for item: TimelineItem) async throws

@@ -64,7 +64,8 @@ private final class FakeSource: CalendarSource {
             TimelineSnapshot(
                 items: snapshot.items.filter { $0.id != item.id },
                 overdue: snapshot.overdue.filter { $0.id != item.id },
-                recurring: snapshot.recurring.filter { $0.id != item.id }
+                recurring: snapshot.recurring.filter { $0.id != item.id },
+                undated: snapshot.undated.filter { $0.id != item.id }
             )
         }
     }
@@ -2858,5 +2859,225 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.range == DateInterval(start: iso(start), end: iso(end)))
         #expect(source.requests.map(\.range) == [model.range])
         #expect(!model.isAlignedWithToday)
+    }
+}
+
+@MainActor
+@Suite struct TimelineModelUndatedTests {
+    /// 2026-11-10 は火曜。週（日曜始まり）は 11-08 〜 11-14。
+    let today = iso("2026-11-10T00:00:00Z")
+    let weekStart = iso("2026-11-08T00:00:00Z")
+
+    private func day(_ dayOfMonth: Int) -> Date {
+        iso("2026-11-\(String(format: "%02d", dayOfMonth))T00:00:00Z")
+    }
+
+    private func todo(
+        _ id: String, list: String = "home", title: String? = nil, _ start: String? = nil, allDay: Bool = false,
+        kind: ItemKind = .reminder
+    ) -> TimelineItem {
+        let start = start.map(iso)
+        return TimelineItem(
+            id: id, calendarItemIdentifier: id, kind: kind, title: title ?? id, start: start,
+            end: kind == .event ? start?.addingTimeInterval(3600) : nil,
+            isAllDay: allDay, isCompleted: false, sourceName: list, accountName: "",
+            color: CGColor(gray: 0, alpha: 1), recurrence: nil, calendarIdentifier: list
+        )
+    }
+
+    private func loaded(
+        undated: [TimelineItem], items: [TimelineItem] = [], hidden: Set<String> = []
+    ) async -> (TimelineModel, FakeSource) {
+        let source = FakeSource()
+        source.snapshots[weekStart] = TimelineSnapshot(items: items, overdue: [], undated: undated)
+        let model = TimelineModel(source: source, calendar: utc, mode: .week, hiddenCalendarIDs: hidden) { self.today }
+        await model.activate()
+        return (model, source)
+    }
+
+    @Test func undatedRemindersAreListedByListThenTitle() async {
+        let (model, _) = await loaded(undated: [
+            todo("w2", list: "work", title: "b"),
+            todo("h2", list: "home", title: "z"),
+            todo("w1", list: "work", title: "a"),
+            todo("h1", list: "home", title: "y"),
+        ])
+
+        #expect(model.undated.map(\.id) == ["h1", "h2", "w1", "w2"])
+        // 時間軸には出さない
+        #expect(model.timeline.isEmpty)
+    }
+
+    @Test func undatedRemindersOfHiddenListsAreNotListed() async {
+        let (model, _) = await loaded(undated: [todo("h"), todo("w", list: "work")], hidden: ["work"])
+        #expect(model.undated.map(\.id) == ["h"])
+
+        await model.setCalendar("home", hidden: true)
+        #expect(model.undated.isEmpty)
+
+        await model.setCalendar("work", hidden: false)
+        #expect(model.undated.map(\.id) == ["w"])
+    }
+
+    @Test func hidingAListTakesItsUndatedRemindersAwayBeforeTheReload() async {
+        let (model, source) = await loaded(undated: [todo("h"), todo("w", list: "work")])
+        source.gate = true
+
+        let hiding = Task { await model.setCalendar("work", hidden: true) }
+        await source.waitForPending(1)
+        #expect(model.undated.map(\.id) == ["h"])
+
+        source.release(at: 0)
+        await hiding.value
+    }
+
+    @Test func completingAnUndatedReminderRemovesItAndUndoBringsItBack() async {
+        let a = todo("a")
+        let (model, source) = await loaded(undated: [a])
+        // 完了すると、取得元は未完了の一覧から外す
+        source.snapshots[weekStart] = .empty
+
+        await model.toggleCompleted(a)
+
+        #expect(source.completions.map(\.completed) == [true])
+        #expect(model.undated.isEmpty)
+
+        source.snapshots[weekStart] = TimelineSnapshot(items: [], overdue: [], undated: [a])
+        await model.undo()
+
+        #expect(source.completions.map(\.completed) == [true, false])
+        #expect(model.undated == [a])
+    }
+
+    @Test func droppingAnUndatedReminderOnTheGridMakesThatTimeItsDueDate() async {
+        let a = todo("a")
+        let (model, source) = await loaded(undated: [a, todo("b")])
+        source.gate = true
+
+        let drop = Task { await model.makeTimed(a, onDay: day(11), startMinute: 600, span: .thisOccurrence) }
+        await source.waitForPending(1)
+
+        // 保存後の読み直しを待たずに、一覧から外れて時間軸に出る
+        #expect(model.undated.map(\.id) == ["b"])
+        #expect(model.placements.map(\.item.start) == [iso("2026-11-11T10:00:00Z")])
+        #expect(source.updates.count == 1)
+        #expect(source.updates[0].item == a)
+        #expect(source.updates[0].draft.kind == .reminder)
+        #expect(source.updates[0].draft.start == iso("2026-11-11T10:00:00Z"))
+        #expect(source.updates[0].draft.end == nil)
+        #expect(source.updates[0].draft.isAllDay == false)
+
+        source.release(at: 0)
+        await drop.value
+    }
+
+    @Test func droppingAnUndatedReminderOnTheAllDayRowMakesThatDayItsDueDate() async {
+        let a = todo("a")
+        let (model, source) = await loaded(undated: [a])
+        source.gate = true
+
+        let drop = Task { await model.makeAllDay(a, onDay: day(12), span: .thisOccurrence) }
+        await source.waitForPending(1)
+
+        #expect(model.undated.isEmpty)
+        #expect(model.allDaySpans.map(\.item.start) == [day(12)])
+        #expect(source.updates[0].draft.start == day(12))
+        #expect(source.updates[0].draft.isAllDay)
+        #expect(source.updates[0].draft.end == nil)
+
+        source.release(at: 0)
+        await drop.value
+    }
+
+    @Test func undoingTheAssignmentSendsADraftWithoutADueDate() async {
+        let a = todo("a", title: "牛乳")
+        let (model, source) = await loaded(undated: [a])
+        // 保存後の読み直しで、期日の付いたリマインダーが返る
+        let scheduled = todo("a", title: "牛乳", "2026-11-11T10:00:00Z")
+        source.snapshots[weekStart] = TimelineSnapshot(items: [scheduled], overdue: [])
+        await model.makeTimed(a, onDay: day(11), startMinute: 600, span: .thisOccurrence)
+        #expect(model.canUndo)
+        #expect(model.undated.isEmpty)
+        source.gate = true
+
+        let undo = Task { await model.undo() }
+        await source.waitForPending(1)
+
+        #expect(source.updates.count == 2)
+        #expect(source.updates[1].item == scheduled)
+        #expect(source.updates[1].draft.title == "牛乳")
+        #expect(source.updates[1].draft.start == nil)
+        #expect(source.updates[1].draft.isAllDay == false)
+        // 読み直しを待たずに、時間軸から外れて一覧へ戻る
+        #expect(model.undated.map(\.id) == ["a"])
+        #expect(model.undated.map(\.start) == [nil])
+        #expect(model.placements.isEmpty)
+
+        source.release(at: 0)
+        await undo.value
+        #expect(!model.canUndo)
+    }
+
+    @Test func undoingAnAllDayAssignmentSendsADraftWithoutADueDate() async {
+        let a = todo("a")
+        let (model, source) = await loaded(undated: [a])
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [todo("a", "2026-11-12T00:00:00Z", allDay: true)], overdue: []
+        )
+        await model.makeAllDay(a, onDay: day(12), span: .thisOccurrence)
+
+        await model.undo()
+
+        #expect(source.updates[1].item.isAllDay)
+        #expect(source.updates[1].draft.start == nil)
+        #expect(source.updates[1].draft.isAllDay == false)
+    }
+
+    @Test func aFailedAssignmentPutsTheReminderBackInTheList() async {
+        let a = todo("a")
+        let (model, source) = await loaded(undated: [a])
+        source.updateError = TestError()
+        // 読み直しも失敗して、楽観更新を戻す処理だけが効く状況
+        source.gate = true
+
+        let drop = Task { await model.makeTimed(a, onDay: day(11), startMinute: 600, span: .thisOccurrence) }
+        await source.waitForPending(1)
+        #expect(model.undated == [a])
+        #expect(model.placements.isEmpty)
+
+        source.release(at: 0)
+        await drop.value
+        #expect(model.errorMessage != nil)
+        #expect(!model.canUndo)
+    }
+
+    @Test func aHeldDeletionHidesTheUndatedReminderUntilItIsUndone() async {
+        let a = todo("a")
+        let (model, source) = await loaded(undated: [a, todo("b")])
+
+        await model.delete(a, span: .thisOccurrence)
+        #expect(model.undated.map(\.id) == ["b"])
+
+        // 保留中の読み直しでも戻らない
+        await model.load()
+        #expect(model.undated.map(\.id) == ["b"])
+
+        await model.undo()
+        #expect(model.undated.map(\.id) == ["a", "b"])
+        #expect(source.deletions.isEmpty)
+    }
+
+    @Test func readOnlyUndatedRemindersAndEventsAreNotAssigned() async {
+        var locked = todo("locked")
+        locked.isEditable = false
+        let timed = todo("event", "2026-11-10T09:00:00Z", kind: .event)
+        let (model, source) = await loaded(undated: [locked], items: [timed])
+
+        await model.makeTimed(locked, onDay: day(11), startMinute: 600, span: .thisOccurrence)
+        await model.makeAllDay(locked, onDay: day(11), span: .thisOccurrence)
+        // 時刻付きの項目を時間軸へ落とすのは、これまでどおり移動の役目
+        await model.makeTimed(timed, onDay: day(11), startMinute: 600, span: .thisOccurrence)
+
+        #expect(source.updates.isEmpty)
     }
 }

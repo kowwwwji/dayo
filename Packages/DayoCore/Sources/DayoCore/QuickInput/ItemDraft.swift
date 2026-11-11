@@ -63,12 +63,13 @@ extension ItemDraft {
         self.init(item, start: start, end: start.addingTimeInterval(max(0, duration)), isAllDay: isAllDay)
     }
 
-    /// 終日の項目を時刻付きにする下書き。予定は 1 時間（終日の長さは時間軸に持ち込めないため）、リマインダーは期日だけ。
+    /// 終日の項目や期日の無いリマインダーを時刻付きにする下書き。
+    /// 予定は 1 時間（終日の長さは時間軸に持ち込めないため）、リマインダーは期日だけ。
     public init(scheduling item: TimelineItem, at start: Date) {
         self.init(item, start: start, end: start.addingTimeInterval(3600), isAllDay: false)
     }
 
-    /// 時刻付きの項目を、その日の終日にする下書き。`day` はその日の 0:00。
+    /// 時刻付きの項目や期日の無いリマインダーを、その日の終日にする下書き。`day` はその日の 0:00。
     public init(makingAllDay item: TimelineItem, on day: Date) {
         self.init(item, start: day, end: day, isAllDay: true)
     }
@@ -80,8 +81,14 @@ extension ItemDraft {
 
     /// 動かした項目の日時を、動かす前（`original`）のものへ戻す下書き。日時のほかは、いまの項目（`current`）のまま。
     /// 終日にしたとき外れた早期リマインダーは、時刻付きへ戻すときに元の値を付け直す。
-    init?(restoring original: TimelineItem, on current: TimelineItem) {
-        guard let start = original.start else { return nil }
+    /// 元が期日の無いリマインダーなら、期日を外す。
+    init(restoring original: TimelineItem, on current: TimelineItem) {
+        guard let start = original.start else {
+            self.init(current, start: nil, end: nil, isAllDay: false)
+            // 期日が無いと基準が無い
+            earlyReminderMinutes = nil
+            return
+        }
         self.init(current, start: start, end: original.end ?? start, isAllDay: original.isAllDay)
         if !original.isAllDay, current.isAllDay {
             earlyReminderMinutes = original.earlyReminderMinutes
@@ -89,7 +96,7 @@ extension ItemDraft {
     }
 
     /// 日時だけを差し替える。`end` は予定のときだけ使う。
-    private init(_ item: TimelineItem, start: Date, end: Date, isAllDay: Bool) {
+    private init(_ item: TimelineItem, start: Date?, end: Date?, isAllDay: Bool) {
         self.init(
             kind: item.kind,
             title: item.title,

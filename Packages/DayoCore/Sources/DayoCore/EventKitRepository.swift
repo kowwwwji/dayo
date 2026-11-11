@@ -48,7 +48,8 @@ public final class EventKitRepository: CalendarSource {
         return TimelineSnapshot(
             items: events + reminders.filter { $0.falls(in: range) },
             overdue: overdue,
-            recurring: VirtualOccurrences.sources(in: reminders, before: range.end)
+            recurring: VirtualOccurrences.sources(in: reminders, before: range.end),
+            undated: reminders.filter { !$0.isCompleted && $0.start == nil }
         )
     }
 
