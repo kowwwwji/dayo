@@ -150,6 +150,17 @@ struct ItemEditorView: View {
                     .focused($titleFocused)
                     // 新規登録はタイトルを打って Enter で終わるようにする
                     .onSubmit { if model.isNew { trigger(.save) } }
+                if isEvent {
+                    TextField("場所", text: $model.location)
+                    // Google カレンダーがメモに足すビデオ会議の案内は、メモ欄には出さずリンクにする
+                    if let url = model.conferenceURL {
+                        LabeledContent("ビデオ会議") {
+                            Link(destination: url) {
+                                Label("参加", systemImage: "video")
+                            }
+                        }
+                    }
+                }
                 if !isEvent {
                     Toggle("期日", isOn: $model.hasDate)
                 }

@@ -26,7 +26,13 @@ public final class ItemEditorModel {
     public let isNew: Bool
     public var kind: ItemKind { item.kind }
     public var title: String
+    /// メモ。Google カレンダーが足すビデオ会議の案内は除いてある（`conferenceURL` として出す）。
     public var notes: String
+    /// event のみ。
+    public var location: String
+    /// メモに入っていたビデオ会議の参加用リンク。無ければ nil。
+    public var conferenceURL: URL? { conference.url }
+    private var conference: ConferenceNotes
     /// reminder のみ。false なら期日なし。event は常に true 扱い。
     public var hasDate: Bool
     public var isAllDay: Bool
@@ -83,7 +89,10 @@ public final class ItemEditorModel {
         self.source = source
         self.calendar = calendar
         title = item.title
-        notes = item.notes ?? ""
+        let conference = ConferenceNotes(item.notes ?? "")
+        self.conference = conference
+        notes = conference.body
+        location = item.location ?? ""
         hasDate = item.start != nil
         // 期日なしから期日ありに切り替えたときの初期値は今日の 9:00
         let defaultStart = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: now) ?? now
@@ -224,7 +233,8 @@ public final class ItemEditorModel {
             isAllDay: usesDate && isAllDay,
             recurrence: recurrenceForDraft,
             calendarID: destinationID.isEmpty ? nil : destinationID,
-            notes: notes,
+            notes: conference.combined(withBody: notes),
+            location: item.kind == .event && !location.trimmingCharacters(in: .whitespaces).isEmpty ? location : nil,
             priority: item.kind == .reminder ? priority : .none,
             // 時刻なしの期日は鳴る時刻が定まらないので付けない
             earlyReminderMinutes: item.kind == .reminder && usesDate && !isAllDay && earlyReminderMinutes > 0 ? earlyReminderMinutes : nil

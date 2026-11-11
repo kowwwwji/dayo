@@ -15,6 +15,8 @@ public struct ItemDraft: Equatable {
     /// 保存先を識別子で選ぶ（エディタ）。あれば `listName` より優先。
     public var calendarID: String?
     public var notes: String?
+    /// event のみ。
+    public var location: String?
     /// reminder のみ。
     public var priority: ReminderPriority
     /// reminder のみ。期日の何分前に通知するか。nil なら無し。
@@ -30,6 +32,7 @@ public struct ItemDraft: Equatable {
         listName: String? = nil,
         calendarID: String? = nil,
         notes: String? = nil,
+        location: String? = nil,
         priority: ReminderPriority = .none,
         earlyReminderMinutes: Int? = nil
     ) {
@@ -42,6 +45,7 @@ public struct ItemDraft: Equatable {
         self.listName = listName
         self.calendarID = calendarID
         self.notes = notes
+        self.location = location
         self.priority = priority
         self.earlyReminderMinutes = earlyReminderMinutes
     }
@@ -75,6 +79,7 @@ extension ItemDraft {
             isAllDay: isAllDay,
             recurrence: item.recurrence,
             notes: item.notes,
+            location: item.location,
             priority: item.priority,
             // 時刻なしの期日は鳴る時刻が定まらないので付けない
             earlyReminderMinutes: isAllDay ? nil : item.earlyReminderMinutes

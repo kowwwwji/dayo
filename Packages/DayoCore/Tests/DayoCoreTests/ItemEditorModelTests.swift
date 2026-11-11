@@ -267,6 +267,33 @@ private func item(
         #expect(source.deletes[0].span == .thisOccurrence)
     }
 
+    @Test func theLocationOfAnEventIsEditedAndClearedThroughTheDraft() {
+        var meeting = item(kind: .event, start: date(2026, 11, 12, 10), end: date(2026, 11, 12, 11))
+        meeting.location = "会議室 A"
+        let model = ItemEditorModel(item: meeting, source: EditingSource(), calendar: tokyo)
+
+        #expect(model.location == "会議室 A")
+        #expect(model.draft.location == "会議室 A")
+
+        model.location = " "
+        #expect(model.draft.location == nil)
+    }
+
+    @Test func theConferenceBlockIsHiddenFromTheNotesAndKeptOnSave() {
+        let line = "-::~:~::~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~::~:~::-"
+        let block = "\(line)\nGoogle Meet に参加: https://meet.google.com/abc-defg-hij\n\(line)"
+        var meeting = item(kind: .event, start: date(2026, 11, 12, 10), end: date(2026, 11, 12, 11))
+        meeting.notes = "議題\n\n\(block)"
+        let model = ItemEditorModel(item: meeting, source: EditingSource(), calendar: tokyo)
+
+        #expect(model.notes == "議題")
+        #expect(model.conferenceURL == URL(string: "https://meet.google.com/abc-defg-hij"))
+        #expect(model.draft.notes == "議題\n\n\(block)")
+
+        model.notes = "議題を変更"
+        #expect(model.draft.notes == "議題を変更\n\n\(block)")
+    }
+
     @Test func destinationsAreFilteredByKind() async {
         let source = EditingSource()
         source.destinationList = [

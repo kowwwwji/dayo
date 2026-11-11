@@ -32,6 +32,8 @@ public struct TimelineItem: Identifiable, Equatable {
     /// 何らかの繰り返し規則を持つか。`recurrence == nil` でも true ならカスタム規則。
     public var hasRecurrence: Bool
     public var notes: String?
+    /// event のみ。場所。
+    public var location: String?
     /// 保存先のリスト／カレンダーの識別子（`Destination.id` と同じ）。
     public var calendarIdentifier: String
     /// 保存先が書き込み可能か。誕生日・祝日・購読カレンダーは false。
@@ -61,6 +63,7 @@ public struct TimelineItem: Identifiable, Equatable {
         recurrence: RecurrenceSpec?,
         hasRecurrence: Bool? = nil,
         notes: String? = nil,
+        location: String? = nil,
         calendarIdentifier: String = "",
         isEditable: Bool = true,
         priority: ReminderPriority = .none,
@@ -81,6 +84,7 @@ public struct TimelineItem: Identifiable, Equatable {
         self.recurrence = recurrence
         self.hasRecurrence = hasRecurrence ?? (recurrence != nil)
         self.notes = notes
+        self.location = location
         self.calendarIdentifier = calendarIdentifier
         self.isEditable = isEditable
         self.priority = priority

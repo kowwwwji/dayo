@@ -26,6 +26,7 @@ extension TimelineItem {
             recurrence: Self.editableRecurrence(rules),
             hasRecurrence: !rules.isEmpty,
             notes: event.notes,
+            location: event.location,
             calendarIdentifier: event.calendar?.calendarIdentifier ?? "",
             isEditable: event.calendar?.allowsContentModifications ?? false
         )

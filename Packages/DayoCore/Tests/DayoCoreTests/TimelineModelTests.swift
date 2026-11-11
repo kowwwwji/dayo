@@ -818,7 +818,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
             end: start.addingTimeInterval(90 * 60), isAllDay: false, isCompleted: false,
             sourceName: "", accountName: "", color: CGColor(gray: 0, alpha: 1),
             recurrence: RecurrenceSpec(frequency: .weekly, weekdays: [3]),
-            notes: "資料", calendarIdentifier: "cal"
+            notes: "資料", location: "会議室 A", calendarIdentifier: "cal"
         )
         let moved = ItemDraft(moving: event, to: iso("2026-11-10T11:00:00Z"))
         #expect(moved.start == iso("2026-11-10T11:00:00Z"))
@@ -826,6 +826,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(moved.isAllDay == false)
         #expect(moved.title == "面談")
         #expect(moved.notes == "資料")
+        #expect(moved.location == "会議室 A")
         #expect(moved.recurrence == RecurrenceSpec(frequency: .weekly, weekdays: [3]))
         #expect(moved.calendarID == nil)
 
