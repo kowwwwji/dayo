@@ -291,7 +291,8 @@ struct ItemEditorView: View {
     /// AppKit の「前のキービュー」は使えない（メモ自身を包むビューや下のボタンを返し、画面の並びと合わない）。
     /// どの欄がフォーカスを受けるかは期日の有無やキーボード操作の設定で変わるので、並びを自前で持たず、画面上の位置から探す。
     private static func focusBeforeNotes() {
-        guard let window = NSApp.keyWindow, let notes = window.firstResponder as? NSView,
+        // ポップオーバーの中の欄は、親のウインドウの first responder としても報告される。探すのは、メモが実際に載っているウインドウの中
+        guard let notes = NSApp.keyWindow?.firstResponder as? NSView, let window = notes.window,
               let root = window.contentView?.superview ?? window.contentView
         else { return }
         // ウインドウの座標は上が大きい
