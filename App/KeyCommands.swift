@@ -194,14 +194,14 @@ struct KeyHelpView: View {
 
     private static let sections = [
         Section(title: "選ぶ", rows: [
-            ("j / k（↓ / ↑）", "下 / 上の項目を選ぶ"),
+            ("j or ↓ / k or ↑", "下 / 上の項目を選ぶ"),
             ("h / l", "3日・週: 隣の日の列へ　日: 前 / 次の日へ"),
             ("esc", "選択を解除（入力欄では入力欄を抜ける）"),
         ]),
         Section(title: "選択中の項目", rows: [
             ("return", "編集を開く"),
             ("space", "リマインダーを完了 / 未完了"),
-            ("⇧j / ⇧k（⇧↓ / ⇧↑）", "15 分遅く / 早く"),
+            ("⇧j or ⇧↓ / ⇧k or ⇧↑", "15 分遅く / 早く"),
             ("⇧h / ⇧l", "前 / 次の日へ"),
         ]),
         Section(title: "表示", rows: [
