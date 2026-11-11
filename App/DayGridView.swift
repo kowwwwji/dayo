@@ -268,7 +268,7 @@ struct DayGridView: View {
             let isEvent = editor?.kind != .reminder
             let title = editor?.title ?? ""
             Text(title.isEmpty ? (isEvent ? "新規予定" : "新規リマインダー") : title)
-                .font(.dayoTitle.weight(.semibold))
+                .font(.dayoTitle)
                 .lineLimit(1)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
@@ -483,7 +483,7 @@ private struct GridItemView: View {
                     // 繰り返しの印はブロックの右上に置く。タイトルは印の手前で切る
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(item.title)
-                            .font(.dayoTitle.weight(.semibold))
+                            .font(.dayoTitle)
                             .lineLimit(placement.durationMinutes >= 60 ? 2 : 1)
                         Spacer(minLength: 0)
                         RecurrenceMark(item: item)

@@ -176,7 +176,7 @@ struct NewItemChip: View {
             let editor = editing.editor
             let title = editor?.title ?? ""
             Text(title.isEmpty ? (editor?.kind == .reminder ? "新規リマインダー" : "新規予定") : title)
-                .font(.dayoTitle.weight(.semibold))
+                .font(.dayoTitle)
                 .lineLimit(1)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 4)

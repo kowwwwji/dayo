@@ -75,7 +75,7 @@ struct DragGhostView: View {
                     .font(.dayoDetail.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.tint)
                 Text(ghost.title)
-                    .font(.dayoTitle.weight(.semibold))
+                    .font(.dayoTitle)
                     .lineLimit(1)
             }
             .padding(.horizontal, 7)
