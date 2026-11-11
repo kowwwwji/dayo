@@ -15,6 +15,7 @@ enum TimelineKey {
     case showToday
     case showPrevious
     case showNext
+    case toggleHelp
 
     /// キーを押し続けたときに繰り返すか。選択の移動だけ繰り返す。
     /// 完了の切替は保存が終わる前に次が来ると同じ状態を二重に書き込むので、繰り返さない。
@@ -28,6 +29,11 @@ enum TimelineKey {
     /// キー入力に当たる操作。修飾キーなしの単キーと、⌘← / ⌘→。
     init?(_ event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        // `?` は配列によって Shift が要るので、打たれた文字で判定する
+        if event.characters == "?", modifiers.subtracting(.shift).isEmpty {
+            self = .toggleHelp
+            return
+        }
         if modifiers == .command {
             switch event.specialKey {
             case .leftArrow: self = .showPrevious
@@ -152,6 +158,50 @@ private struct KeyCatcher: NSViewRepresentable {
             // 入力欄を編集している間、ウインドウの first responder は NSText（フィールドエディタ）になる
             return !(window.firstResponder is NSText)
         }
+    }
+}
+
+/// キー操作の一覧。`?` で出す。
+struct KeyHelpView: View {
+    let onClose: () -> Void
+
+    private static let rows: [(keys: String, action: String)] = [
+        ("j / k", "下 / 上の項目を選ぶ"),
+        ("h / l", "週: 隣の日の列へ　日: 前 / 次の日へ"),
+        ("Space", "選択中のリマインダーを完了 / 未完了"),
+        ("Return", "選択中の項目の編集を開く"),
+        ("Esc", "選択を解除（入力欄では入力欄を抜ける）"),
+        ("t", "今日へ"),
+        ("⌘N", "入力欄へ"),
+        ("⌘1 / ⌘2", "日表示 / 週表示"),
+        ("⌘← / ⌘→", "前 / 次の日（週表示では週）"),
+        ("?", "この一覧を出す / 閉じる"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("キー操作")
+                .font(.headline)
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+                ForEach(Self.rows, id: \.keys) { row in
+                    GridRow {
+                        Text(row.keys)
+                            .font(.dayoTitle.monospaced().weight(.semibold))
+                            .gridColumnAlignment(.trailing)
+                        Text(row.action)
+                            .font(.dayoTitle)
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary))
+        .shadow(radius: 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // 一覧の外も含め、どこをクリックしても閉じる
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onClose)
     }
 }
 

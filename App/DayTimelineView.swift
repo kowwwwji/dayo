@@ -20,6 +20,8 @@ struct DayTimelineView: View {
         let perform: (EditSpan) async -> Void
     }
     @State private var showsSettings = false
+    /// キー操作の一覧を出しているか（Mac のみ）
+    @State private var showsKeyHelp = false
 
     private var editing: ItemEditing {
         ItemEditing(editor: $editor, anchor: $editorAnchor, make: makeEditor, makeNew: makeNewEditor)
@@ -44,6 +46,11 @@ struct DayTimelineView: View {
             content
         }
         #if os(macOS)
+        .overlay {
+            if showsKeyHelp {
+                KeyHelpView { showsKeyHelp = false }
+            }
+        }
         .onTimelineKey(isEnabled: model.access == .granted && editor == nil && pendingChange == nil, perform: handle)
         #endif
         .task { await model.activate() }
@@ -73,7 +80,13 @@ struct DayTimelineView: View {
         case .openEditor:
             guard let selection = model.selection, let item = model.selectedItem else { return false }
             editing.open(item, at: selection.place.editorAnchor)
+        case .toggleHelp: showsKeyHelp.toggle()
         case .clearSelection:
+            // 一覧が出ていれば、まずそれを閉じる
+            if showsKeyHelp {
+                showsKeyHelp = false
+                return true
+            }
             guard model.selection != nil else { return false }
             model.clearSelection()
         }
