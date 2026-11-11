@@ -23,15 +23,25 @@ targets:
       properties:
         NSCalendarsFullAccessUsageDescription: 予定をタイムラインに表示・登録するためにカレンダーへのアクセスが必要です。
         NSRemindersFullAccessUsageDescription: Todo をタイムラインに表示・登録するためにリマインダーへのアクセスが必要です。
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
         UILaunchScreen: {}
     settings:
       base:
         SWIFT_VERSION: "5.0"
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        PRODUCT_BUNDLE_IDENTIFIER: com.kowwwwji.Dayo
         CODE_SIGN_STYLE: Automatic
         # Mac は App Sandbox 下で EventKit を使うため entitlements が必須。署名 ID が無くてもアドホックで動かす。
         CODE_SIGN_ENTITLEMENTS[sdk=macosx*]: App/Dayo.entitlements
         CODE_SIGN_IDENTITY[sdk=macosx*]: "-"
         # iOS 実機は DEVELOPMENT_TEAM を設定するまで不可（シミュレータのみ）
+      configs:
+        Debug:
+          # 開発用のビルドは、インストールしたアプリと設定・許可を分ける（確認用の起動が普段使いの設定を書き換えないように）
+          PRODUCT_BUNDLE_IDENTIFIER: com.kowwwwji.Dayo.dev
 
 schemes:
   Dayo:
