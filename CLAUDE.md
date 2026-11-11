@@ -19,3 +19,7 @@
 - Swift Testing の `#expect` に `allSatisfy { ... }` など rethrows のクロージャを直接書くとコンパイルエラーになる。`map(\.x) == [...]` の形で比べる
 - SwiftUI の `.offset` で置いたビューは `ScrollViewReader.scrollTo` の行き先にならない（配置上の位置が変わらないため）。行き先には `alignmentGuide` で位置を持たせた目印を置く
 - `DateInterval.contains` は終端を含む。「翌日 0:00 は含めない」判定は `start <= x && x < end` で書く
+- キー操作の確認は、`open -n -g` で背面起動したインスタンスへ `CGEvent.postToPid` でキーを送る（前面に出さずに届く）。Dayo はレイヤー 0 のウインドウを 2 つ持つので、`screencapture -l` には面積が最大のものを渡す
+- 確認用インスタンスには `-keyCheck 1` のような固有の起動引数を付け、終了は `pgrep -f` でその引数を持つ PID だけにする
+- Mac のウインドウは first responder が空だと最初の入力欄へフォーカスを入れる（起動直後と、ポップオーバーを閉じた直後）。入力欄以外でキーを受けたいなら、first responder を持つビューを置く
+- `#if os(macOS)` の 1 ブロックに、シーンの修飾子（`.commands`）と別のシーン（`Settings`）を混ぜるとコンパイルエラーになる。ブロックを分ける
