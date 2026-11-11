@@ -41,8 +41,23 @@ private final class FakeSource: CalendarSource {
         updates.append((item, draft, span))
     }
 
+    /// 立てると `delete` が `releaseDelete` まで待つ。
+    var deleteGate = false
+    private var pendingDeletes: [CheckedContinuation<Void, Never>] = []
+
+    func waitForPendingDelete() async {
+        while pendingDeletes.isEmpty { await Task.yield() }
+    }
+
+    func releaseDelete() {
+        pendingDeletes.removeFirst().resume()
+    }
+
     /// 削除した項目は、以後の取得結果からも消える。
     func delete(_ item: TimelineItem, span: EditSpan) async throws {
+        if deleteGate {
+            await withCheckedContinuation { pendingDeletes.append($0) }
+        }
         if let deleteError { throw deleteError }
         deletions.append((item, span))
         snapshots = snapshots.mapValues { snapshot in
@@ -55,6 +70,9 @@ private final class FakeSource: CalendarSource {
     }
 
     func destinations() async throws -> [Destination] { [] }
+
+    var calendarList: [CalendarInfo] = []
+    func calendars() async throws -> [CalendarInfo] { calendarList }
 
     func refresh() async { refreshCount += 1 }
 
@@ -1357,6 +1375,30 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.selection == grid("sat", 15))
     }
 
+    /// 保存の直後に来る変更通知の読み込みが、保存後の読み直しを追い越す。予定の id は開始日時を含むので、
+    /// 追い越した側の結果では別の id になっている。
+    @Test func theSelectionFollowsAMovedEventWhenAChangeNotificationReloadsFirst() async {
+        let source = FakeSource()
+        let (model, _) = await loaded([make("x#1", calendarItem: "x", "2026-11-10T09:00:00Z")], source: source)
+        model.selectNext()
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [make("x#2", calendarItem: "x", "2026-11-10T09:15:00Z")], overdue: []
+        )
+        source.gate = true
+
+        let move = Task { await model.moveSelectionInTime(1, span: .thisOccurrence) }
+        await source.waitForPending(1)
+        let notified = Task { await model.load() }
+        await source.waitForPending(2)
+        source.release(at: 0)
+        await move.value
+        source.release(at: 0)
+        await notified.value
+
+        #expect(model.selection == grid("x#2", 10))
+        #expect(model.selectedItem?.start == iso("2026-11-10T09:15:00Z"))
+    }
+
     @Test func aFailedMoveOutOfTheWeekKeepsTheViewAndShowsTheError() async {
         let source = FakeSource()
         source.updateError = TestError()
@@ -1492,17 +1534,16 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
 
     // MARK: - 選択中の項目を削除する
 
-    @Test func deletingSendsTheSelectedItemWithItsSpanAndReloads() async {
+    @Test func deletingHidesTheSelectedItemAtOnceAndSendsNothingYet() async {
         let (model, source) = await loaded([make("a", "2026-11-10T09:00:00Z")])
         model.selectNext()
-        let requests = source.requests.count
 
         await model.deleteSelection(span: .futureOccurrences)
 
-        #expect(source.deletions.map(\.item.id) == ["a"])
-        #expect(source.deletions.map(\.span) == [.futureOccurrences])
-        #expect(source.requests.count == requests + 1)
         #expect(model.columns.flatMap(\.placements).isEmpty)
+        #expect(model.pendingDeletion?.item.id == "a")
+        #expect(model.pendingDeletion?.span == .futureOccurrences)
+        #expect(source.deletions.isEmpty)
         #expect(model.errorMessage == nil)
     }
 
@@ -1547,7 +1588,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
     }
 
     @Test func deletingAnAllDayItemSelectsTheNextEntryOfTheColumn() async {
-        let (model, source) = await loaded([
+        let (model, _) = await loaded([
             make("holiday", "2026-11-10T00:00:00Z", hours: 24, allDay: true),
             make("a", "2026-11-10T09:00:00Z"),
         ], mode: .day)
@@ -1556,7 +1597,8 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
 
         await model.deleteSelection(span: .thisOccurrence)
 
-        #expect(source.deletions.map(\.item.id) == ["holiday"])
+        #expect(model.pendingDeletion?.item.id == "holiday")
+        #expect(model.allDaySpans.isEmpty)
         #expect(model.selection == grid("a", 10))
     }
 
@@ -1573,6 +1615,7 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
 
         await model.deleteSelection(span: .thisOccurrence)
 
+        #expect(model.timeline.overdue.isEmpty)
         #expect(model.selection == grid("later", 9))
     }
 
@@ -1583,13 +1626,218 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         await model.deleteSelection(span: .thisOccurrence)
         model.selectNext()
         await model.deleteSelection(span: .thisOccurrence)
+        await model.flushPendingDeletion()
 
+        #expect(model.pendingDeletion == nil)
         #expect(source.deletions.isEmpty)
         #expect(source.requests.count == requests)
         #expect(model.selection == grid("birthday", 10))
     }
 
-    @Test func aFailedDeleteShowsTheErrorAndKeepsTheSelection() async {
+    @Test func flushingSendsTheHeldDeletionWithItsSpan() async {
+        let (model, source) = await loaded([make("a", "2026-11-10T09:00:00Z")])
+        model.selectNext()
+        await model.deleteSelection(span: .futureOccurrences)
+
+        await model.flushPendingDeletion()
+
+        #expect(source.deletions.map(\.item.id) == ["a"])
+        #expect(source.deletions.map(\.span) == [.futureOccurrences])
+        #expect(model.pendingDeletion == nil)
+        #expect(!model.canUndo)
+        // 2 回目は何も送らない
+        await model.flushPendingDeletion()
+        #expect(source.deletions.count == 1)
+    }
+
+    @Test func theHeldDeletionIsSentAfterTheDelay() async {
+        let source = FakeSource()
+        source.snapshots[weekStart] = TimelineSnapshot(items: [make("a", "2026-11-10T09:00:00Z")], overdue: [])
+        let model = TimelineModel(source: source, calendar: utc, mode: .week, deleteDelay: .milliseconds(20)) {
+            self.today
+        }
+        await model.activate()
+        model.selectNext()
+
+        await model.deleteSelection(span: .thisOccurrence)
+        #expect(source.deletions.isEmpty)
+        while source.deletions.isEmpty { await Task.yield() }
+        while model.pendingDeletion != nil { await Task.yield() }
+
+        #expect(source.deletions.map(\.item.id) == ["a"])
+        #expect(model.columns.flatMap(\.placements).isEmpty)
+    }
+
+    @Test func undoingBeforeTheDelayBringsTheItemBackAndNothingIsSent() async {
+        let source = FakeSource()
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [make("a", "2026-11-10T09:00:00Z"), make("b", "2026-11-10T12:00:00Z")], overdue: []
+        )
+        let model = TimelineModel(source: source, calendar: utc, mode: .week, deleteDelay: .milliseconds(20)) {
+            self.today
+        }
+        await model.activate()
+        model.selectNext()
+        await model.deleteSelection(span: .thisOccurrence)
+        #expect(model.selection == grid("b", 10))
+        #expect(model.canUndo)
+
+        await model.undo()
+        try? await Task.sleep(for: .milliseconds(60))
+        await model.flushPendingDeletion()
+
+        #expect(model.pendingDeletion == nil)
+        #expect(source.deletions.isEmpty)
+        #expect(model.columns.flatMap(\.placements).map(\.id) == ["a", "b"])
+        #expect(model.selection == grid("a", 10))
+        #expect(!model.canUndo)
+    }
+
+    @Test func theNextDeletionSendsThePreviousOne() async {
+        let (model, source) = await loaded([
+            make("a", "2026-11-10T09:00:00Z"),
+            make("b", "2026-11-10T12:00:00Z"),
+        ])
+        model.selectNext()
+
+        await model.deleteSelection(span: .thisOccurrence)
+        await model.deleteSelection(span: .thisOccurrence)
+
+        #expect(source.deletions.map(\.item.id) == ["a"])
+        #expect(model.pendingDeletion?.item.id == "b")
+        #expect(model.columns.flatMap(\.placements).isEmpty)
+    }
+
+    @Test func aHeldItemStaysHiddenWhenTheTimelineReloads() async {
+        let (model, source) = await loaded([
+            make("a", "2026-11-10T09:00:00Z"),
+            make("b", "2026-11-10T12:00:00Z"),
+        ])
+        model.selectNext()
+        await model.deleteSelection(span: .thisOccurrence)
+
+        await model.load()
+        await model.showNext()
+        await model.showPrevious()
+
+        #expect(model.columns.flatMap(\.placements).map(\.id) == ["b"])
+        #expect(source.deletions.isEmpty)
+    }
+
+    @Test func holdingFutureOccurrencesHidesTheLaterOnesOfTheSeriesToo() async {
+        let (model, _) = await loaded([
+            make("x#1", calendarItem: "x", "2026-11-09T09:00:00Z"),
+            make("x#2", calendarItem: "x", "2026-11-10T09:00:00Z"),
+            make("x#3", calendarItem: "x", "2026-11-11T09:00:00Z"),
+            make("y", "2026-11-11T12:00:00Z"),
+        ])
+        model.selectNext()
+        #expect(model.selection == grid("x#2", 10))
+
+        await model.deleteSelection(span: .futureOccurrences)
+
+        #expect(model.columns.flatMap(\.placements).map(\.id) == ["x#1", "y"])
+    }
+
+    @Test func holdingThisOccurrenceKeepsTheOtherOnesOfTheSeries() async {
+        let (model, _) = await loaded([
+            make("x#2", calendarItem: "x", "2026-11-10T09:00:00Z"),
+            make("x#3", calendarItem: "x", "2026-11-11T09:00:00Z"),
+        ])
+        model.selectNext()
+
+        await model.deleteSelection(span: .thisOccurrence)
+
+        #expect(model.columns.flatMap(\.placements).map(\.id) == ["x#3"])
+    }
+
+    /// リマインダーの繰り返しは 1 つのオブジェクトなので、消すと薄色の将来回も無くなる。
+    @Test func holdingARecurringReminderHidesItsFutureOccurrences() async {
+        let source = FakeSource()
+        var daily = make("daily", kind: .reminder, "2026-11-10T09:00:00Z")
+        daily.recurrence = RecurrenceSpec(frequency: .daily)
+        daily.hasRecurrence = true
+        source.snapshots[weekStart] = TimelineSnapshot(items: [daily], overdue: [], recurring: [daily])
+        let model = TimelineModel(source: source, calendar: utc, mode: .week) { self.today }
+        await model.activate()
+        #expect(model.columns.flatMap(\.placements).count > 1)
+        model.selectNext()
+
+        await model.deleteSelection(span: .thisOccurrence)
+        await model.load()
+
+        #expect(model.columns.flatMap(\.placements).isEmpty)
+    }
+
+    @Test func deletingAnItemWithoutSelectingItHoldsItTheSameWay() async {
+        let a = make("a", "2026-11-10T09:00:00Z")
+        let (model, source) = await loaded([a, make("b", "2026-11-10T12:00:00Z")])
+
+        await model.delete(a, span: .thisOccurrence)
+
+        #expect(model.pendingDeletion?.item.id == "a")
+        #expect(model.columns.flatMap(\.placements).map(\.id) == ["b"])
+        #expect(source.deletions.isEmpty)
+    }
+
+    /// 前の保留を取得元へ送っている最中の削除は受けない。受けると、あとから再開した側が保留を上書きして、
+    /// 画面から消えたのに消えない項目が残る。
+    @Test func aDeletionIsRefusedWhileThePreviousOneIsBeingSent() async {
+        let a = make("a", "2026-11-10T09:00:00Z")
+        let b = make("b", "2026-11-10T12:00:00Z")
+        let c = make("c", "2026-11-10T15:00:00Z")
+        let (model, source) = await loaded([a, b, c])
+        await model.delete(a, span: .thisOccurrence)
+        source.deleteGate = true
+
+        let second = Task { await model.delete(b, span: .thisOccurrence) }
+        await source.waitForPendingDelete()
+        let third = await model.delete(c, span: .thisOccurrence)
+        source.releaseDelete()
+        let accepted = await second.value
+
+        #expect(accepted)
+        #expect(!third)
+        #expect(source.deletions.map(\.item.id) == ["a"])
+        #expect(model.pendingDeletion?.item.id == "b")
+        #expect(model.columns.flatMap(\.placements).map(\.id) == ["c"])
+    }
+
+    @Test func theItemStaysHiddenWhileItsDeletionIsBeingSent() async {
+        let (model, source) = await loaded([make("a", "2026-11-10T09:00:00Z"), make("b", "2026-11-10T12:00:00Z")])
+        model.selectNext()
+        await model.deleteSelection(span: .thisOccurrence)
+        source.deleteGate = true
+
+        let flush = Task { await model.flushPendingDeletion() }
+        await source.waitForPendingDelete()
+        await model.load()
+
+        #expect(model.columns.flatMap(\.placements).map(\.id) == ["b"])
+        source.releaseDelete()
+        await flush.value
+        #expect(model.columns.flatMap(\.placements).map(\.id) == ["b"])
+    }
+
+    @Test func deletingReportsWhetherTheItemWasTaken() async {
+        let a = make("a", "2026-11-10T09:00:00Z")
+        let (model, source) = await loaded([a, make("birthday", "2026-11-10T12:00:00Z", editable: false)])
+        model.selectNext()
+        source.gate = true
+        let move = Task { await model.moveSelectionInTime(1, span: .thisOccurrence) }
+        await source.waitForPending(1)
+
+        // 移動を保存している間は受けない
+        #expect(await model.delete(a, span: .thisOccurrence) == false)
+        source.release(at: 0)
+        await move.value
+        source.gate = false
+
+        #expect(await model.delete(model.timeline.timed[1], span: .thisOccurrence) == false)
+        #expect(await model.delete(a, span: .thisOccurrence))
+    }
+
+    @Test func aFailedDeletionShowsTheErrorAndBringsTheItemBack() async {
         let source = FakeSource()
         source.deleteError = TestError()
         let (model, _) = await loaded([
@@ -1597,33 +1845,42 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
             make("b", "2026-11-10T12:00:00Z"),
         ], source: source)
         model.selectNext()
-        let requests = source.requests.count
-
         await model.deleteSelection(span: .thisOccurrence)
 
+        await model.flushPendingDeletion()
+
         #expect(model.errorMessage != nil)
-        #expect(model.selection == grid("a", 10))
-        #expect(source.requests.count == requests)
+        #expect(model.pendingDeletion == nil)
+        #expect(model.columns.flatMap(\.placements).map(\.id) == ["a", "b"])
     }
 
-    @Test func aSecondDeleteIsIgnoredWhileOneIsBeingSaved() async {
-        let (model, source) = await loaded([
-            make("a", "2026-11-10T09:00:00Z"),
-            make("b", "2026-11-10T12:00:00Z"),
-        ])
+    @Test func undoTakesBackTheDeletionFirstAndThenTheEarlierMove() async {
+        let (model, source) = await loaded([make("a", "2026-11-10T09:00:00Z")])
+        model.selectNext()
+        await model.moveSelectionInTime(1, span: .thisOccurrence)
+        await model.deleteSelection(span: .thisOccurrence)
+
+        await model.undo()
+        #expect(model.pendingDeletion == nil)
+        #expect(source.updates.count == 1)
+        await model.undo()
+
+        #expect(source.updates.count == 2)
+        #expect(source.deletions.isEmpty)
+    }
+
+    @Test func nothingIsDeletedWhileAMoveIsBeingSaved() async {
+        let (model, source) = await loaded([make("a", "2026-11-10T09:00:00Z")])
         model.selectNext()
         source.gate = true
 
-        let task = Task { await model.deleteSelection(span: .thisOccurrence) }
+        let task = Task { await model.moveSelectionInTime(1, span: .thisOccurrence) }
         await source.waitForPending(1)
         await model.deleteSelection(span: .thisOccurrence)
-        await model.moveSelectionByDay(1, span: .thisOccurrence)
 
-        #expect(source.deletions.count == 1)
-        #expect(source.updates.isEmpty)
+        #expect(model.pendingDeletion == nil)
         source.release(at: 0)
         await task.value
-        #expect(model.selection == grid("b", 10))
     }
 }
 
@@ -2027,5 +2284,567 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         await model.moveSelectionByDay(1, span: .thisOccurrence)
 
         #expect(source.updates.map(\.draft.start) == [iso("2026-11-11T09:00:00Z")])
+    }
+}
+
+@MainActor
+@Suite struct TimelineModelUndoTests {
+    /// 2026-11-10 は火曜。週（日曜始まり）は 11-08 〜 11-14。
+    let today = iso("2026-11-10T00:00:00Z")
+    let weekStart = iso("2026-11-08T00:00:00Z")
+    let nextWeekStart = iso("2026-11-15T00:00:00Z")
+
+    private func day(_ dayOfMonth: Int) -> Date {
+        iso("2026-11-\(String(format: "%02d", dayOfMonth))T00:00:00Z")
+    }
+
+    private func make(
+        _ id: String, calendarItem: String? = nil, kind: ItemKind = .event, _ start: String, hours: Double = 1,
+        allDay: Bool = false, title: String? = nil, earlyReminder: Int? = nil
+    ) -> TimelineItem {
+        let start = iso(start)
+        return TimelineItem(
+            id: id, calendarItemIdentifier: calendarItem ?? id, kind: kind, title: title ?? id, start: start,
+            end: kind == .event ? start.addingTimeInterval(hours * 3600) : nil,
+            isAllDay: allDay, isCompleted: false, sourceName: "", accountName: "",
+            color: CGColor(gray: 0, alpha: 1), recurrence: nil, earlyReminderMinutes: earlyReminder
+        )
+    }
+
+    private func grid(_ id: String, _ dayOfMonth: Int) -> TimelineSelection {
+        TimelineSelection(itemID: id, place: .grid(day: day(dayOfMonth)))
+    }
+
+    private func loaded(
+        _ items: [TimelineItem], source: FakeSource = FakeSource()
+    ) async -> (TimelineModel, FakeSource) {
+        source.snapshots[weekStart] = TimelineSnapshot(items: items, overdue: [])
+        let model = TimelineModel(source: source, calendar: utc, mode: .week) { self.today }
+        await model.activate()
+        return (model, source)
+    }
+
+    @Test func thereIsNothingToUndoAtFirst() async {
+        let (model, source) = await loaded([make("a", "2026-11-10T09:00:00Z")])
+
+        #expect(!model.canUndo)
+        await model.undo()
+
+        #expect(source.updates.isEmpty)
+    }
+
+    @Test func undoingAMoveByKeySendsTheOriginalDatesForTheMovedItem() async {
+        let (model, source) = await loaded([make("a", "2026-11-10T09:00:00Z")])
+        model.selectNext()
+        await model.moveSelectionInTime(1, span: .futureOccurrences)
+        #expect(model.canUndo)
+
+        await model.undo()
+
+        #expect(source.updates.count == 2)
+        // 取得元は開始日時で項目を引き直すので、動かした後の日時の項目を渡す
+        #expect(source.updates[1].item.start == iso("2026-11-10T09:15:00Z"))
+        #expect(source.updates[1].item.end == iso("2026-11-10T10:15:00Z"))
+        #expect(source.updates[1].draft.start == iso("2026-11-10T09:00:00Z"))
+        #expect(source.updates[1].draft.end == iso("2026-11-10T10:00:00Z"))
+        #expect(source.updates[1].span == .futureOccurrences)
+        #expect(!model.canUndo)
+    }
+
+    @Test func undoingADragSendsTheOriginalDates() async {
+        let a = make("a", "2026-11-10T09:00:00Z")
+        let (model, source) = await loaded([a])
+        await model.move(a, from: day(10), toDay: day(12), startMinute: 600, span: .thisOccurrence)
+
+        await model.undo()
+
+        #expect(source.updates.map(\.draft.start) == [iso("2026-11-12T10:00:00Z"), iso("2026-11-10T09:00:00Z")])
+        #expect(source.updates[1].item.start == iso("2026-11-12T10:00:00Z"))
+    }
+
+    @Test func undoingAnAllDayDropMakesTheItemTimedAgainWithItsEarlyReminder() async {
+        let todo = make("todo", kind: .reminder, "2026-11-10T09:00:00Z", earlyReminder: 10)
+        let (model, source) = await loaded([todo])
+        // 保存後の読み直しで、終日になったリマインダーが返る（早期リマインダーは外れている）
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [make("todo", kind: .reminder, "2026-11-11T00:00:00Z", allDay: true)], overdue: []
+        )
+        await model.makeAllDay(todo, onDay: day(11), span: .thisOccurrence)
+
+        await model.undo()
+
+        #expect(source.updates[1].item.isAllDay)
+        #expect(source.updates[1].item.start == day(11))
+        #expect(source.updates[1].draft.start == iso("2026-11-10T09:00:00Z"))
+        #expect(source.updates[1].draft.isAllDay == false)
+        #expect(source.updates[1].draft.earlyReminderMinutes == 10)
+    }
+
+    @Test func undoingATimedDropMakesTheItemAllDayAgain() async {
+        let holiday = make("holiday", "2026-11-10T00:00:00Z", hours: 24, allDay: true)
+        let (model, source) = await loaded([holiday])
+        await model.makeTimed(holiday, onDay: day(10), startMinute: 540, span: .thisOccurrence)
+
+        await model.undo()
+
+        #expect(source.updates[1].draft.start == iso("2026-11-10T00:00:00Z"))
+        #expect(source.updates[1].draft.end == iso("2026-11-11T00:00:00Z"))
+        #expect(source.updates[1].draft.isAllDay)
+    }
+
+    @Test func undoingAMoveOutOfTheWeekSendsTheOriginalDates() async {
+        let (model, source) = await loaded([make("sat", "2026-11-14T09:00:00Z")])
+        model.selectNext()
+        await model.moveSelectionByDay(1, span: .thisOccurrence)
+        #expect(model.range.start == nextWeekStart)
+
+        await model.undo()
+
+        #expect(source.updates.map(\.draft.start) == [iso("2026-11-15T09:00:00Z"), iso("2026-11-14T09:00:00Z")])
+        #expect(source.updates[1].item.start == iso("2026-11-15T09:00:00Z"))
+    }
+
+    @Test func undoKeepsWhatWasEditedAfterTheMove() async {
+        let source = FakeSource()
+        let (model, _) = await loaded([make("x#1", calendarItem: "x", "2026-11-10T09:00:00Z")], source: source)
+        model.selectNext()
+        // 動かしたあとに、編集ポップオーバーでタイトルを変えた
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [make("x#2", calendarItem: "x", "2026-11-11T09:00:00Z", title: "改名")], overdue: []
+        )
+        await model.moveSelectionByDay(1, span: .thisOccurrence)
+
+        await model.undo()
+
+        #expect(source.updates[1].item.id == "x#2")
+        #expect(source.updates[1].draft.title == "改名")
+        #expect(source.updates[1].draft.start == iso("2026-11-10T09:00:00Z"))
+    }
+
+    /// リマインダーは 1 つのオブジェクトなので、動かしたあと詳細編集で日時を変えていても同じものを指せる。
+    /// 記録した古い内容で上書きせず、いまの内容に元の日時だけを当てる。
+    @Test func undoingAReminderMoveUsesItsCurrentContentEvenIfItsDateWasEditedSince() async {
+        let source = FakeSource()
+        let (model, _) = await loaded([make("todo", kind: .reminder, "2026-11-10T09:00:00Z")], source: source)
+        model.selectNext()
+        await model.moveSelectionInTime(1, span: .thisOccurrence)
+        // 詳細編集で、日時とタイトルを変えた
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [make("todo", kind: .reminder, "2026-11-12T15:00:00Z", title: "改名")], overdue: []
+        )
+        await model.load()
+
+        await model.undo()
+
+        #expect(source.updates[1].item.start == iso("2026-11-12T15:00:00Z"))
+        #expect(source.updates[1].draft.title == "改名")
+        #expect(source.updates[1].draft.start == iso("2026-11-10T09:00:00Z"))
+    }
+
+    @Test func theRestoredItemIsSelected() async {
+        let source = FakeSource()
+        let (model, _) = await loaded([make("x#1", calendarItem: "x", "2026-11-10T09:00:00Z")], source: source)
+        model.selectNext()
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [make("x#2", calendarItem: "x", "2026-11-11T09:00:00Z")], overdue: []
+        )
+        await model.moveSelectionByDay(1, span: .thisOccurrence)
+        model.clearSelection()
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [make("x#1", calendarItem: "x", "2026-11-10T09:00:00Z")], overdue: []
+        )
+
+        await model.undo()
+
+        #expect(model.selection == grid("x#1", 10))
+    }
+
+    @Test func undoGoesBackThroughTheChangesNewestFirst() async {
+        let a = make("a", "2026-11-10T09:00:00Z")
+        let b = make("b", "2026-11-11T09:00:00Z")
+        let (model, source) = await loaded([a, b])
+        await model.move(a, from: day(10), toDay: day(10), startMinute: 600, span: .thisOccurrence)
+        await model.move(b, from: day(11), toDay: day(11), startMinute: 660, span: .thisOccurrence)
+
+        await model.undo()
+        await model.undo()
+        await model.undo()
+
+        #expect(source.updates.map(\.item.id) == ["a", "b", "b", "a"])
+        #expect(source.updates[2].draft.start == iso("2026-11-11T09:00:00Z"))
+        #expect(source.updates[3].draft.start == iso("2026-11-10T09:00:00Z"))
+    }
+
+    @Test func onlyTheLastTwentyChangesCanBeUndone() async {
+        let a = make("a", "2026-11-10T09:00:00Z")
+        let (model, source) = await loaded([a])
+        for step in 1...21 {
+            await model.move(a, from: day(10), toDay: day(10), startMinute: 540 + step, span: .thisOccurrence)
+        }
+
+        for _ in 1...25 { await model.undo() }
+
+        #expect(source.updates.count == 21 + 20)
+    }
+
+    @Test func aFailedMoveLeavesNothingToUndo() async {
+        let source = FakeSource()
+        source.updateError = TestError()
+        let a = make("a", "2026-11-10T09:00:00Z")
+        let (model, _) = await loaded([a], source: source)
+
+        await model.move(a, from: day(10), toDay: day(10), startMinute: 600, span: .thisOccurrence)
+
+        #expect(!model.canUndo)
+    }
+
+    @Test func aFailedUndoShowsTheErrorAndIsNotRetried() async {
+        let source = FakeSource()
+        let a = make("a", "2026-11-10T09:00:00Z")
+        let (model, _) = await loaded([a], source: source)
+        await model.move(a, from: day(10), toDay: day(10), startMinute: 600, span: .futureOccurrences)
+        source.updateError = TestError()
+
+        await model.undo()
+
+        #expect(model.errorMessage != nil)
+        #expect(!model.canUndo)
+    }
+
+    @Test func undoingACompletionSetsTheReminderBackToIncomplete() async {
+        let todo = make("todo", kind: .reminder, "2026-11-10T09:00:00Z")
+        let (model, source) = await loaded([todo])
+        await model.toggleCompleted(todo)
+        #expect(model.canUndo)
+
+        await model.undo()
+
+        #expect(source.completions.map(\.id) == ["todo", "todo"])
+        #expect(source.completions.map(\.completed) == [true, false])
+        #expect(!model.canUndo)
+    }
+
+    @Test func aFailedCompletionLeavesNothingToUndo() async {
+        let source = FakeSource()
+        source.setCompletedError = TestError()
+        let todo = make("todo", kind: .reminder, "2026-11-10T09:00:00Z")
+        let (model, _) = await loaded([todo], source: source)
+
+        await model.toggleCompleted(todo)
+
+        #expect(!model.canUndo)
+    }
+}
+
+@MainActor
+@Suite struct TimelineModelResizeTests {
+    /// 2026-11-10 は火曜。週（日曜始まり）は 11-08 〜 11-14。
+    let today = iso("2026-11-10T00:00:00Z")
+    let weekStart = iso("2026-11-08T00:00:00Z")
+
+    private func make(
+        _ id: String, kind: ItemKind = .event, _ start: String, minutes: Double = 60,
+        allDay: Bool = false, editable: Bool = true
+    ) -> TimelineItem {
+        let start = iso(start)
+        return TimelineItem(
+            id: id, calendarItemIdentifier: id, kind: kind, title: id, start: start,
+            end: kind == .event ? start.addingTimeInterval(minutes * 60) : nil,
+            isAllDay: allDay, isCompleted: false, sourceName: "", accountName: "",
+            color: CGColor(gray: 0, alpha: 1), recurrence: nil, notes: "メモ", isEditable: editable
+        )
+    }
+
+    private func loaded(_ items: [TimelineItem]) async -> (TimelineModel, FakeSource) {
+        let source = FakeSource()
+        source.snapshots[weekStart] = TimelineSnapshot(items: items, overdue: [])
+        let model = TimelineModel(source: source, calendar: utc, mode: .week) { self.today }
+        await model.activate()
+        return (model, source)
+    }
+
+    @Test func theResizingDraftChangesOnlyTheEnd() {
+        let meeting = make("meeting", "2026-11-10T09:00:00Z")
+
+        let draft = ItemDraft(resizing: meeting, toEnd: iso("2026-11-10T11:30:00Z"))
+
+        #expect(draft == ItemDraft(
+            kind: .event, title: "meeting", start: iso("2026-11-10T09:00:00Z"), end: iso("2026-11-10T11:30:00Z"),
+            notes: "メモ"
+        ))
+    }
+
+    @Test func resizingSendsTheNewEndAndKeepsTheStart() async {
+        let meeting = make("meeting", "2026-11-10T09:00:00Z")
+        let (model, source) = await loaded([meeting])
+
+        await model.resize(meeting, toEnd: iso("2026-11-10T11:30:00Z"), span: .futureOccurrences)
+
+        #expect(source.updates.map(\.draft.start) == [iso("2026-11-10T09:00:00Z")])
+        #expect(source.updates.map(\.draft.end) == [iso("2026-11-10T11:30:00Z")])
+        #expect(source.updates.map(\.span) == [.futureOccurrences])
+    }
+
+    @Test func theItemShowsItsNewLengthBeforeTheSaveFinishes() async {
+        let meeting = make("meeting", "2026-11-10T09:00:00Z")
+        let (model, source) = await loaded([meeting])
+        source.gate = true
+
+        let task = Task { await model.resize(meeting, toEnd: iso("2026-11-10T11:30:00Z"), span: .thisOccurrence) }
+        await source.waitForPending(1)
+
+        #expect(model.timeline.timed.map(\.end) == [iso("2026-11-10T11:30:00Z")])
+        source.release(at: 0)
+        await task.value
+    }
+
+    @Test func resizingStopsAtAQuarterHourAndAtTheEndOfTheDay() async {
+        let meeting = make("meeting", "2026-11-10T09:00:00Z")
+        let (model, source) = await loaded([meeting])
+
+        await model.resize(meeting, toEnd: iso("2026-11-10T08:00:00Z"), span: .thisOccurrence)
+        await model.resize(meeting, toEnd: iso("2026-11-11T03:00:00Z"), span: .thisOccurrence)
+
+        #expect(source.updates.map(\.draft.end) == [iso("2026-11-10T09:15:00Z"), iso("2026-11-11T00:00:00Z")])
+    }
+
+    @Test func resizingToTheSameEndSendsNothing() async {
+        let meeting = make("meeting", "2026-11-10T09:00:00Z")
+        let (model, source) = await loaded([meeting])
+
+        await model.resize(meeting, toEnd: iso("2026-11-10T10:00:00Z"), span: .thisOccurrence)
+
+        #expect(source.updates.isEmpty)
+    }
+
+    @Test func theSelectionGrowsAndShrinksToTheNextQuarterHour() async {
+        let (model, source) = await loaded([make("meeting", "2026-11-10T09:00:00Z", minutes: 67)])
+        model.selectNext()
+
+        await model.resizeSelection(1, span: .thisOccurrence)
+        await model.resizeSelection(-1, span: .futureOccurrences)
+
+        // 取得元の内容は変えていないので、2 回とも 10:07 の終了から数える
+        #expect(source.updates.map(\.draft.end) == [iso("2026-11-10T10:15:00Z"), iso("2026-11-10T10:00:00Z")])
+        #expect(source.updates.map(\.draft.start) == [iso("2026-11-10T09:00:00Z"), iso("2026-11-10T09:00:00Z")])
+        #expect(source.updates.map(\.span) == [.thisOccurrence, .futureOccurrences])
+        #expect(model.selection == TimelineSelection(itemID: "meeting", place: .grid(day: today)))
+    }
+
+    @Test func theSelectionOnAQuarterHourMovesAFullQuarter() async {
+        let (model, source) = await loaded([make("meeting", "2026-11-10T09:00:00Z")])
+        model.selectNext()
+
+        await model.resizeSelection(1, span: .thisOccurrence)
+        await model.resizeSelection(-1, span: .thisOccurrence)
+
+        #expect(source.updates.map(\.draft.end) == [iso("2026-11-10T10:15:00Z"), iso("2026-11-10T09:45:00Z")])
+    }
+
+    @Test func theSelectionDoesNotShrinkBelowAQuarterHourOrGrowPastMidnight() async {
+        let (model, source) = await loaded([
+            make("short", "2026-11-10T09:00:00Z", minutes: 15),
+            make("last", "2026-11-10T23:00:00Z"),
+        ])
+        model.selectNext()
+        await model.resizeSelection(-1, span: .thisOccurrence)
+        model.selectNext()
+        await model.resizeSelection(1, span: .thisOccurrence)
+
+        #expect(source.updates.isEmpty)
+    }
+
+    @Test func remindersAllDayAndReadOnlyItemsAreNotResized() async {
+        let todo = make("todo", kind: .reminder, "2026-11-10T08:00:00Z")
+        let holiday = make("holiday", "2026-11-10T00:00:00Z", minutes: 24 * 60, allDay: true)
+        let birthday = make("birthday", "2026-11-10T09:00:00Z", editable: false)
+        let (model, source) = await loaded([todo, holiday, birthday])
+
+        for item in [todo, holiday, birthday] {
+            await model.resize(item, toEnd: iso("2026-11-10T12:00:00Z"), span: .thisOccurrence)
+        }
+        for _ in 0..<3 {
+            model.selectNext()
+            await model.resizeSelection(1, span: .thisOccurrence)
+        }
+        await model.resizeSelection(1, span: .thisOccurrence)
+
+        #expect(model.selection == TimelineSelection(itemID: "birthday", place: .grid(day: today)))
+        #expect(source.updates.isEmpty)
+    }
+
+    @Test func nothingIsResizedWithoutASelection() async {
+        let (model, source) = await loaded([make("meeting", "2026-11-10T09:00:00Z")])
+
+        await model.resizeSelection(1, span: .thisOccurrence)
+
+        #expect(source.updates.isEmpty)
+    }
+
+    @Test func undoingAResizeSendsTheOriginalEnd() async {
+        let (model, source) = await loaded([make("meeting", "2026-11-10T09:00:00Z")])
+        model.selectNext()
+        // 保存後の読み直しで、長さの変わった予定が返る
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [make("meeting", "2026-11-10T09:00:00Z", minutes: 75)], overdue: []
+        )
+        await model.resizeSelection(1, span: .thisOccurrence)
+
+        await model.undo()
+
+        #expect(source.updates.map(\.draft.end) == [iso("2026-11-10T10:15:00Z"), iso("2026-11-10T10:00:00Z")])
+        #expect(source.updates[1].item.end == iso("2026-11-10T10:15:00Z"))
+        #expect(source.updates[1].draft.start == iso("2026-11-10T09:00:00Z"))
+    }
+}
+
+@MainActor
+@Suite struct TimelineModelCalendarTests {
+    /// 2026-11-10 は火曜。週（日曜始まり）は 11-08 〜 11-14。
+    let today = iso("2026-11-10T00:00:00Z")
+    let weekStart = iso("2026-11-08T00:00:00Z")
+
+    private func make(
+        _ id: String, in calendar: String, kind: ItemKind = .event, _ start: String, allDay: Bool = false,
+        recurrence: RecurrenceSpec? = nil
+    ) -> TimelineItem {
+        let start = iso(start)
+        return TimelineItem(
+            id: id, calendarItemIdentifier: id, kind: kind, title: id, start: start,
+            end: kind == .event ? start.addingTimeInterval(allDay ? 86_400 : 3600) : nil,
+            isAllDay: allDay, isCompleted: false, sourceName: "", accountName: "",
+            color: CGColor(gray: 0, alpha: 1), recurrence: recurrence, calendarIdentifier: calendar
+        )
+    }
+
+    private func info(_ id: String, kind: ItemKind = .event) -> CalendarInfo {
+        CalendarInfo(id: id, name: id, kind: kind, color: CGColor(gray: 0, alpha: 1), accountName: "Google")
+    }
+
+    /// 仕事と Busy のカレンダー、リマインダーのリスト「家」に、列・終日・期限切れ・将来回がそれぞれある週。
+    private func source() -> FakeSource {
+        let source = FakeSource()
+        let daily = make(
+            "daily", in: "home", kind: .reminder, "2026-11-10T07:00:00Z", recurrence: RecurrenceSpec(frequency: .daily)
+        )
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [
+                make("work", in: "work", "2026-11-10T09:00:00Z"),
+                make("busy", in: "busy", "2026-11-10T09:00:00Z"),
+                make("busy-day", in: "busy", "2026-11-11T00:00:00Z", allDay: true),
+                daily,
+            ],
+            overdue: [make("late", in: "home", kind: .reminder, "2026-11-01T09:00:00Z")],
+            recurring: [daily]
+        )
+        source.calendarList = [info("work"), info("busy"), info("home", kind: .reminder)]
+        return source
+    }
+
+    private func ids(_ model: TimelineModel) -> [String] {
+        (model.columns.flatMap(\.placements).map(\.item) + model.allDaySpans.map(\.item) + model.timeline.overdue)
+            .map { $0.isVirtual ? "virtual" : $0.id }
+            .sorted()
+    }
+
+    @Test func nothingIsHiddenUnlessAsked() async {
+        let model = TimelineModel(source: source(), calendar: utc, mode: .week) { self.today }
+        await model.activate()
+
+        #expect(model.hiddenCalendarIDs.isEmpty)
+        #expect(Set(ids(model)) == ["busy", "busy-day", "daily", "late", "virtual", "work"])
+    }
+
+    @Test func itemsOfCalendarsHiddenFromTheStartAreNotShownAnywhere() async {
+        let model = TimelineModel(
+            source: source(), calendar: utc, mode: .week, hiddenCalendarIDs: ["busy", "home"]
+        ) { self.today }
+
+        await model.activate()
+
+        #expect(ids(model) == ["work"])
+        #expect(model.hiddenCalendarIDs == ["busy", "home"])
+    }
+
+    @Test func hidingACalendarRemovesItsItemsAndShowingItBringsThemBack() async {
+        let model = TimelineModel(source: source(), calendar: utc, mode: .week) { self.today }
+        await model.activate()
+
+        await model.setCalendar("busy", hidden: true)
+        #expect(Set(ids(model)) == ["daily", "late", "virtual", "work"])
+        #expect(model.hiddenCalendarIDs == ["busy"])
+
+        await model.setCalendar("home", hidden: true)
+        #expect(ids(model) == ["work"])
+
+        await model.setCalendar("busy", hidden: false)
+        #expect(ids(model) == ["busy", "busy-day", "work"])
+        #expect(model.hiddenCalendarIDs == ["home"])
+    }
+
+    @Test func theItemsDisappearBeforeTheReloadFinishes() async {
+        let source = source()
+        let model = TimelineModel(source: source, calendar: utc, mode: .week) { self.today }
+        await model.activate()
+        source.gate = true
+
+        let task = Task { await model.setCalendar("busy", hidden: true) }
+        await source.waitForPending(1)
+
+        #expect(Set(ids(model)) == ["daily", "late", "virtual", "work"])
+        source.release(at: 0)
+        await task.value
+    }
+
+    @Test func hidingTheCalendarOfTheSelectedItemClearsTheSelection() async {
+        let model = TimelineModel(source: source(), calendar: utc, mode: .week) { self.today }
+        await model.activate()
+        model.select(TimelineSelection(itemID: "busy", place: .grid(day: today)))
+        #expect(model.selectedItem?.id == "busy")
+
+        await model.setCalendar("busy", hidden: true)
+
+        #expect(model.selection == nil)
+    }
+
+    @Test func theCalendarListIsLoadedOnActivationAndWhenTheSourceChanges() async {
+        let source = source()
+        let model = TimelineModel(source: source, calendar: utc, mode: .week) { self.today }
+        #expect(model.calendars.isEmpty)
+
+        await model.activate()
+        #expect(model.calendars.map(\.id) == ["work", "busy", "home"])
+
+        source.calendarList.append(info("new"))
+        source.emitChange()
+        while model.calendars.count < 4 { await Task.yield() }
+        #expect(model.calendars.map(\.id) == ["work", "busy", "home", "new"])
+    }
+}
+
+@MainActor
+@Suite struct TimelineModelJumpTests {
+    /// 2026-11-10 は火曜。
+    let today = iso("2026-11-10T00:00:00Z")
+
+    @Test(arguments: [
+        (TimelineMode.day, "2026-11-20T00:00:00Z", "2026-11-21T00:00:00Z"),
+        // 3 日表示はその日が左端
+        (.threeDays, "2026-11-20T00:00:00Z", "2026-11-23T00:00:00Z"),
+        // 週表示はその日を含む週（日曜始まり）
+        (.week, "2026-11-15T00:00:00Z", "2026-11-22T00:00:00Z"),
+    ])
+    func showingADayKeepsTheModeAndLoadsTheRangeAroundIt(mode: TimelineMode, start: String, end: String) async {
+        let source = FakeSource()
+        let model = TimelineModel(source: source, calendar: utc, mode: mode) { self.today }
+
+        // 時刻が付いていても、その日として扱う
+        await model.show(day: iso("2026-11-20T15:30:00Z"))
+
+        #expect(model.mode == mode)
+        #expect(model.day == iso("2026-11-20T00:00:00Z"))
+        #expect(model.range == DateInterval(start: iso(start), end: iso(end)))
+        #expect(source.requests.map(\.range) == [model.range])
+        #expect(!model.isAlignedWithToday)
     }
 }

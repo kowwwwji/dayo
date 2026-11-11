@@ -20,7 +20,11 @@ enum TimelineKey {
     case moveEarlier
     case moveToPreviousDay
     case moveToNextDay
+    case lengthen
+    case shorten
     case deleteSelection
+    case undo
+    case jumpToDate
 
     /// キーを押し続けたときに繰り返すか。選択の移動だけ繰り返す。
     /// 完了の切替は保存が終わる前に次が来ると同じ状態を二重に書き込むので、繰り返さない。削除も 1 回押して 1 件だけ。
@@ -31,7 +35,7 @@ enum TimelineKey {
         }
     }
 
-    /// キー入力に当たる操作。修飾キーなしの単キー（矢印キーは h / j / k / l と同じ）と、⌘← / ⌘→。
+    /// キー入力に当たる操作。修飾キーなしの単キー（矢印キーは h / j / k / l と同じ）と、⌘← / ⌘→ / ⌘z。
     init?(_ event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
         // `?` は配列によって Shift が要るので、打たれた文字で判定する
@@ -43,7 +47,10 @@ enum TimelineKey {
             switch event.specialKey {
             case .leftArrow: self = .showPrevious
             case .rightArrow: self = .showNext
-            default: return nil
+            // メニューの「取り消す」は置き換えない。入力欄で文字を打っている間はここへ来ないので、文字の取り消しはそのまま
+            default:
+                guard event.charactersIgnoringModifiers?.lowercased() == "z" else { return nil }
+                self = .undo
             }
             return
         }
@@ -66,6 +73,14 @@ enum TimelineKey {
             }
             return
         }
+        if modifiers == .option {
+            switch character {
+            case "j": self = .lengthen
+            case "k": self = .shorten
+            default: return nil
+            }
+            return
+        }
         guard modifiers.isEmpty else { return nil }
         switch character {
         case "j": self = .selectNext
@@ -73,6 +88,8 @@ enum TimelineKey {
         case "h": self = .selectLeft
         case "l": self = .selectRight
         case "t": self = .showToday
+        case "u": self = .undo
+        case "g": self = .jumpToDate
         // delete（⌫）と前方削除（⌦）も d と同じ
         case "d", "\u{7f}", "\u{F728}": self = .deleteSelection
         case " ": self = .toggleCompleted
@@ -209,12 +226,15 @@ struct KeyHelpView: View {
             ("space", "リマインダーを完了 / 未完了"),
             ("⇧j or ⇧↓ / ⇧k or ⇧↑", "15 分遅く / 早く"),
             ("⇧h or ⇧← / ⇧l or ⇧→", "前 / 次の日へ"),
+            ("⌥j or ⌥↓ / ⌥k or ⌥↑", "予定を 15 分長く / 短く"),
             ("d or delete", "削除"),
+            ("u or ⌘z", "直前の移動・完了・削除を取り消す"),
         ]),
         Section(title: "表示", rows: [
             ("⌘← / ⌘→", "前 / 次の日（3日表示では 3 日、週表示では週）"),
+            ("g", "日付を指定して移動"),
             ("⌘1 / ⌘2 / ⌘3", "日表示 / 3日表示 / 週表示"),
-            ("⌃⌘s", "サイドバーを出す / 隠す"),
+            ("⌘s", "サイドバーを出す / 隠す"),
             ("⌘r", "最新の状態に更新"),
         ]),
         Section(title: "そのほか", rows: [
@@ -290,7 +310,7 @@ struct TimelineCommands: Commands {
                 .keyboardShortcut("r")
             Divider()
             Button("サイドバーを表示 / 非表示") { SidebarSetting.toggle() }
-                .keyboardShortcut("s", modifiers: [.control, .command])
+                .keyboardShortcut("s")
         }
     }
 }

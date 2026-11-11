@@ -9,6 +9,13 @@ struct GridMove {
     let minute: Int
 }
 
+/// 下端のドラッグで変えた長さ。`endMinute` は掴んだ列の日の 0:00 から数えた終了の分。
+struct GridResizeRequest {
+    let item: TimelineItem
+    let day: Date
+    let endMinute: Int
+}
+
 /// 0〜24 時の時間軸に予定とリマインダーを配置する。日ごとの列を横に並べ（日表示は 1 列）、時刻目盛りは左に 1 本だけ描く。
 /// 重なりは列の中でさらに分けて横に並べる。
 /// 設定した表示時間帯の外に何も無ければ、その時間帯は帯に畳む（クリックで開く）。
@@ -25,6 +32,8 @@ struct DayGridView: View {
     let onMove: (GridMove, EditSpan) -> Void
     /// 終日欄へ落とした。その日の終日にする
     let onMakeAllDay: (TimelineItem, Date) -> Void
+    /// 予定の下端をドラッグして長さを変えた。新しい終了と、繰り返し予定ならどの回に及ぶか
+    let onResize: (TimelineItem, Date, EditSpan) -> Void
     @Environment(\.selectTimelineItem) private var selectItem
 
     private let hourHeight: CGFloat = 56
@@ -46,8 +55,26 @@ struct DayGridView: View {
     /// ユーザーが開いた側。表示する日を変えたら畳み直す。
     @State private var expanded: Set<DayGridAxis.Edge> = []
     @State private var now = Date.now
-    /// 繰り返し予定を落としたあと、範囲を聞いている間の保留。確定するまで落とした位置に置いたままにする
-    @State private var pendingMove: GridMove?
+    /// 繰り返し予定を動かした・長さを変えたあと、範囲を聞いている間の保留。確定するまで変えた見た目のままにする
+    @State private var pendingChange: PendingChange?
+
+    private enum PendingChange {
+        case move(GridMove)
+        case resize(GridResizeRequest)
+    }
+
+    /// Mac は `SpanAlert` で聞くので、確認ダイアログは iPhone だけ。
+    private static var usesConfirmationDialog: Bool {
+        #if os(macOS)
+        false
+        #else
+        true
+        #endif
+    }
+
+    private var pendingMove: GridMove? {
+        if case .move(let move) = pendingChange { move } else { nil }
+    }
     /// ダブルクリックで新規登録を開いた場所。エディタを閉じるまで、そこに仮の項目を置く
     @State private var newSlot: NewSlot?
     private let clock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -135,15 +162,22 @@ struct DayGridView: View {
             }
             .confirmationDialog(
                 "繰り返しの予定です",
-                isPresented: Binding(get: { pendingMove != nil }, set: { if !$0 { pendingMove = nil } }),
+                isPresented: Binding(
+                    get: { Self.usesConfirmationDialog && pendingChange != nil },
+                    set: { if !$0 { pendingChange = nil } }
+                ),
                 titleVisibility: .visible,
-                presenting: pendingMove
-            ) { move in
-                Button("この回のみ") { onMove(move, .thisOccurrence) }
-                Button("以降すべて") { onMove(move, .futureOccurrences) }
+                presenting: pendingChange
+            ) { change in
+                Button("この回のみ") { perform(change, span: .thisOccurrence) }
+                Button("以降すべて") { perform(change, span: .futureOccurrences) }
                 Button("キャンセル", role: .cancel) {}
-            } message: { _ in
-                Text("どの回の日時を変えますか？")
+            } message: { change in
+                if case .resize = change {
+                    Text("どの回の長さを変えますか？")
+                } else {
+                    Text("どの回の日時を変えますか？")
+                }
             }
         }
     }
@@ -173,10 +207,75 @@ struct DayGridView: View {
             minute: target.minute
         )
         if item.kind == .event, item.hasRecurrence {
-            pendingMove = move
+            ask(.move(move))
         } else {
             onMove(move, .thisOccurrence)
         }
+    }
+
+    /// どの回に及ぶかを聞く。聞いている間は、変えた見た目のまま置いておく。
+    /// Mac は「この回のみ」に枠を置ける AppKit のダイアログ、iPhone は確認ダイアログ（`pendingChange` が出す）。
+    private func ask(_ change: PendingChange) {
+        pendingChange = change
+        #if os(macOS)
+        SpanAlert.present(
+            message: { if case .resize = change { "どの回の長さを変えますか？" } else { "どの回の日時を変えますか？" } }()
+        ) { span in
+            pendingChange = nil
+            if let span { perform(change, span: span) }
+        }
+        #endif
+    }
+
+    private func perform(_ change: PendingChange, span: EditSpan) {
+        switch change {
+        case .move(let move):
+            onMove(move, span)
+        case .resize(let resize):
+            guard let end = Calendar.autoupdatingCurrent.date(byAdding: .minute, value: resize.endMinute, to: resize.day)
+            else { return }
+            onResize(resize.item, end, span)
+        }
+    }
+
+    /// 予定の下端のドラッグ。長さを変えられない項目（リマインダー、読み取り専用、次の日へ続く予定のこの列の切れ端）は nil。
+    /// iPhone では付けない（スクロールと取り合うため）。
+    private func resize(for placement: GridPlacement, day: Date, axis: DayGridAxis) -> GridResize? {
+        #if os(macOS)
+        let item = placement.item
+        guard item.kind == .event, item.isEditable, !item.isVirtual, !item.isAllDay, let end = item.end else { return nil }
+        let endMinute = Int((end.timeIntervalSince(day) / 60).rounded())
+        let shortest = placement.startMinute + 15
+        guard endMinute <= 24 * 60, shortest <= 24 * 60 else { return nil }
+        return GridResize(
+            endMinute: { translation in
+                let moved = axis.minute(forY: axis.y(forMinute: endMinute) + translation)
+                return min(24 * 60, max(shortest, Int((Double(moved) / 15).rounded()) * 15))
+            },
+            height: { Self.itemHeight(axis, from: placement.startMinute, to: $0) },
+            onEnd: { newEnd in
+                guard newEnd != endMinute else { return }
+                let request = GridResizeRequest(item: item, day: day, endMinute: newEnd)
+                if item.hasRecurrence {
+                    ask(.resize(request))
+                } else {
+                    perform(.resize(request), span: .thisOccurrence)
+                }
+            }
+        )
+        #else
+        return nil
+        #endif
+    }
+
+    /// 確認待ちの長さの変更があれば、その終了の分。
+    private func pendingEndMinute(for placement: GridPlacement, day: Date) -> Int? {
+        guard case .resize(let resize) = pendingChange, resize.item.id == placement.id, resize.day == day else { return nil }
+        return resize.endMinute
+    }
+
+    private static func itemHeight(_ axis: DayGridAxis, from start: Int, to end: Int) -> CGFloat {
+        max(18, axis.height(fromMinute: start, to: end) - 1)
     }
 
     /// 確認待ちの項目を落とした位置に置いておくためのずらし量。
@@ -343,6 +442,11 @@ struct DayGridView: View {
                     labelColumnWidth: labelWidth - 6,
                     distanceToGridLeft: x,
                     dayWidth: dayWidth,
+                    height: Self.itemHeight(
+                        axis, from: placement.startMinute,
+                        to: pendingEndMinute(for: placement, day: column.day) ?? placement.endMinute
+                    ),
+                    resize: resize(for: placement, day: column.day, axis: axis),
                     board: board,
                     onSelect: {
                         selectItem(TimelineSelection(itemID: placement.id, place: .grid(day: column.day)))
@@ -357,11 +461,8 @@ struct DayGridView: View {
                     onDropAllDay: { day in onMakeAllDay(placement.item, day) },
                     onNewItem: { location in openNewItem(at: location, axis: axis, dayWidth: dayWidth) }
                 )
-                .frame(
-                    width: max(0, columnWidth - 2),
-                    height: max(18, axis.height(fromMinute: placement.startMinute, to: placement.endMinute) - 1),
-                    alignment: .topLeading
-                )
+                // 高さは項目の側で決める。下端のドラッグ中に伸び縮みするため
+                .frame(width: max(0, columnWidth - 2), alignment: .topLeading)
                 .opacity(pending == .zero ? 1 : 0.85)
                 .zIndex(pending == .zero ? 0 : 1)
                 .offset(x: x + pending.width, y: axis.y(forMinute: placement.startMinute) + pending.height)
@@ -407,8 +508,18 @@ private struct GridDropTarget {
     let minute: Int
 }
 
+/// 予定の下端のドラッグ。分は掴んだ列の日の 0:00 から数える。
+private struct GridResize {
+    /// 下端の移動量（pt）から、終了の分（15 分刻み。最短 15 分、24:00 まで）
+    let endMinute: (CGFloat) -> Int
+    /// 終了がその分のときのブロックの高さ
+    let height: (Int) -> CGFloat
+    let onEnd: (Int) -> Void
+}
+
 /// グリッド上の 1 項目。予定はカレンダー色のブロック、リマインダーはチェック付きの行。
 /// ドラッグすると時刻と日を変える（Mac はそのまま、iPhone は長押ししてから）。縦は自由に、横は列単位で動く。
+/// 予定は下端をドラッグすると長さが変わる（Mac）。
 /// ドラッグ中のずらしと時刻ラベルはこの中で描く。親の状態を毎フレーム更新するとグリッド全体が描き直されてちらつくため。
 /// 繰り返しリマインダーの将来回（仮想項目）は薄く描き、操作を受け付けない。
 private struct GridItemView: View {
@@ -422,6 +533,9 @@ private struct GridItemView: View {
     let labelColumnWidth: CGFloat
     let distanceToGridLeft: CGFloat
     let dayWidth: CGFloat
+    let height: CGFloat
+    /// 下端のドラッグで長さを変えられるなら、その計算と結果の渡し先
+    let resize: GridResize?
     let board: TimelineDragBoard
     /// クリックした。この項目を選択する
     let onSelect: () -> Void
@@ -438,6 +552,8 @@ private struct GridItemView: View {
     @GestureState private var translation: CGSize = .zero
     /// ドラッグ中の位置（`TimelineDragBoard.space` の座標）。終日欄の上にいるかの判定に使う
     @GestureState private var dragLocation: CGPoint?
+    /// 下端をドラッグしている間の移動量
+    @GestureState private var resizeTranslation: CGFloat?
 
     private var item: TimelineItem { placement.item }
     private var color: Color { Color(cgColor: item.color) }
@@ -448,7 +564,9 @@ private struct GridItemView: View {
         let isOverAllDay = dragLocation.flatMap(board.allDayTarget(at:)) != nil
         let target = isDragging && !isOverAllDay ? dropTarget(translation) : nil
         let shiftX = CGFloat(target?.dayOffset ?? 0) * dayWidth
+        let resizedEnd = resizeTranslation.flatMap { translation in resize.map { $0.endMinute(translation) } }
         content
+            .frame(height: resizedEnd.flatMap { end in resize.map { $0.height(end) } } ?? height, alignment: .top)
             .selectionRing(isSelected)
             .opacity(item.isVirtual ? 0.45 : isOverAllDay ? 0.3 : isDragging ? 0.85 : 1)
             .onChange(of: isDragging) { _, dragging in
@@ -467,8 +585,24 @@ private struct GridItemView: View {
                         .allowsHitTesting(false)
                 }
             }
+            .overlay(alignment: .bottomLeading) {
+                if let resizedEnd {
+                    Text(timeText(minute: resizedEnd))
+                        .font(.dayoDetail.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.tint)
+                        .frame(width: labelColumnWidth, alignment: .trailing)
+                        .padding(.vertical, 1)
+                        .background(.background)
+                        .offset(x: -distanceToGridLeft, y: 7)
+                        .allowsHitTesting(false)
+                }
+            }
+            // 掴む帯は項目の中に重ねる。中のジェスチャが先に効くので、移動のドラッグより優先して掴める
+            .overlay(alignment: .bottom) {
+                if let resize { resizeHandle(resize) }
+            }
             .offset(x: shiftX, y: translation.height)
-            .zIndex(isDragging ? 1 : 0)
+            .zIndex(isDragging || resizedEnd != nil ? 1 : 0)
             .gesture(item.isEditable ? moveGesture : nil)
             .allowsHitTesting(!item.isVirtual)
     }
@@ -546,6 +680,24 @@ private struct GridItemView: View {
     }
 
     // MARK: - ドラッグ
+
+    /// 下端の掴む帯。ドラッグ中は高さが 15 分刻みで付いてくる。
+    private func resizeHandle(_ resize: GridResize) -> some View {
+        Color.clear
+            .frame(height: 6)
+            .contentShape(Rectangle())
+            #if os(macOS)
+            .onHover { inside in
+                if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
+            }
+            #endif
+            // 帯は伸び縮みに合わせて動くので、移動量は動かない座標で測る
+            .gesture(
+                DragGesture(minimumDistance: 2, coordinateSpace: .named(TimelineDragBoard.space))
+                    .updating($resizeTranslation) { value, state, _ in state = value.translation.height }
+                    .onEnded { value in resize.onEnd(resize.endMinute(value.translation.height)) }
+            )
+    }
 
     #if os(iOS)
     /// スクロールと競合しないよう、長押ししてからドラッグ

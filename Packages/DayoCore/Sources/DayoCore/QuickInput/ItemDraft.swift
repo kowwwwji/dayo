@@ -73,6 +73,21 @@ extension ItemDraft {
         self.init(item, start: day, end: day, isAllDay: true)
     }
 
+    /// 予定の開始はそのままに、終了だけを変える下書き。
+    public init(resizing item: TimelineItem, toEnd end: Date) {
+        self.init(item, start: item.start ?? end, end: end, isAllDay: item.isAllDay)
+    }
+
+    /// 動かした項目の日時を、動かす前（`original`）のものへ戻す下書き。日時のほかは、いまの項目（`current`）のまま。
+    /// 終日にしたとき外れた早期リマインダーは、時刻付きへ戻すときに元の値を付け直す。
+    init?(restoring original: TimelineItem, on current: TimelineItem) {
+        guard let start = original.start else { return nil }
+        self.init(current, start: start, end: original.end ?? start, isAllDay: original.isAllDay)
+        if !original.isAllDay, current.isAllDay {
+            earlyReminderMinutes = original.earlyReminderMinutes
+        }
+    }
+
     /// 日時だけを差し替える。`end` は予定のときだけ使う。
     private init(_ item: TimelineItem, start: Date, end: Date, isAllDay: Bool) {
         self.init(

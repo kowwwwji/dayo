@@ -9,6 +9,8 @@ struct DayTimelineView: View {
     let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
     /// 新規登録のモデルを作る。引数は開始日時と、終日として開くか
     let makeNewEditor: @MainActor (Date, Bool) -> ItemEditorModel
+    /// 日付ジャンプを開く入口（Mac の `g`）。ボタンは入力欄の行にある
+    var dateJump: DateJumpRequest?
     @Environment(\.scenePhase) private var scenePhase
     @State private var editor: ItemEditorModel?
     @State private var editorAnchor: String?
@@ -52,8 +54,11 @@ struct DayTimelineView: View {
                 KeyHelpView { showsKeyHelp = false }
             }
         }
-        .onTimelineKey(isEnabled: model.access == .granted && editor == nil && pendingChange == nil,
-            perform: handle)
+        .onTimelineKey(
+            isEnabled: model.access == .granted && editor == nil && pendingChange == nil
+                && dateJump?.isPresented != true,
+            perform: handle
+        )
         #endif
         .environment(\.selectTimelineItem) { model.select($0) }
         .task { await model.activate() }
@@ -88,9 +93,15 @@ struct DayTimelineView: View {
         case .moveEarlier: moveSelection { await model.moveSelectionInTime(-1, span: $0) }
         case .moveToPreviousDay: moveSelection { await model.moveSelectionByDay(-1, span: $0) }
         case .moveToNextDay: moveSelection { await model.moveSelectionByDay(1, span: $0) }
+        case .lengthen: resizeSelection(1)
+        case .shorten: resizeSelection(-1)
         case .deleteSelection:
             guard let item = model.selectedItem, item.isEditable else { return false }
-            confirmDelete(item)
+            delete(item)
+        case .undo: Task { await model.undo() }
+        case .jumpToDate:
+            guard let dateJump else { return false }
+            dateJump.isPresented = true
         case .clearSelection:
             // 一覧が出ていれば、まずそれを閉じる
             if showsKeyHelp {
@@ -109,49 +120,25 @@ struct DayTimelineView: View {
         change(item, perform)
     }
 
-    /// 選択中の項目の削除を確認する。同期先からも消えるので必ず聞く。繰り返しの予定は、どの回かを聞くことが確認を兼ねる。
-    /// 削除のあと選択は隣へ移るので、続けて押しても何を消すのか分かるよう、どちらの確認にもタイトルを出す。
-    private func confirmDelete(_ item: TimelineItem) {
+    /// 選択中の予定の長さをキーで変える。長さの無い項目（リマインダー、終日）では範囲も聞かない。
+    private func resizeSelection(_ direction: Int) {
+        guard let item = model.selectedItem, item.kind == .event, !item.isAllDay else { return }
+        change(item) { await model.resizeSelection(direction, span: $0) }
+    }
+
+    /// 選択中の項目を削除する。確認は出さない（すぐには消さず、取り消せる間を置くため）。
+    /// 繰り返しの予定だけは、どの回かを聞く。
+    private func delete(_ item: TimelineItem) {
         if item.kind == .event, item.hasRecurrence {
-            pendingChange = PendingChange(message: "「\(item.title)」のどの回を削除しますか？") {
+            ask(PendingChange(message: "「\(item.title)」のどの回を削除しますか？") {
                 await deleteSelection(item, span: $0)
-            }
+            })
         } else {
-            presentDeleteAlert(for: item)
+            Task { await model.deleteSelection(span: .thisOccurrence) }
         }
     }
 
-    /// 削除の確認。return で削除、esc で取り消し。
-    /// SwiftUI の確認ダイアログは最初のフォーカスを選べず、キーボード操作をオンにしていると
-    /// 「キャンセル」にフォーカスの輪が付いて、そちらが選ばれているように見える。AppKit のダイアログで「削除」に置く。
-    /// 文面は詳細編集の削除確認と揃える。
-    private func presentDeleteAlert(for item: TimelineItem) {
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
-        let alert = NSAlert()
-        alert.messageText = "「\(item.title)」を削除しますか？"
-        let delete = alert.addButton(withTitle: "削除")
-        // 消す操作だと分かるよう赤で出す。既定のボタンは色の指定を受け付けないので、OS の「破壊的操作」の見た目に任せる
-        delete.hasDestructiveAction = true
-        let cancel = alert.addButton(withTitle: "キャンセル")
-        cancel.keyEquivalent = "\u{1b}"
-        alert.window.initialFirstResponder = delete
-        // 破壊的操作のボタンは return の割り当てを外される。return で削除できるよう、ダイアログが出ている間だけキーを見て受ける
-        let sheet = alert.window
-        let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let isReturn = event.keyCode == 36 || event.keyCode == 76
-            let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
-            guard isReturn, modifiers.isEmpty, event.window === sheet else { return event }
-            window.endSheet(sheet, returnCode: .alertFirstButtonReturn)
-            return nil
-        }
-        alert.beginSheetModal(for: window) { response in
-            if let monitor { NSEvent.removeMonitor(monitor) }
-            guard response == .alertFirstButtonReturn else { return }
-            Task { await deleteSelection(item, span: .thisOccurrence) }
-        }
-    }
-
-    /// 確認している間に選択が変わっていたら（同期で消えた等）、何もしない。
+    /// 範囲を聞いている間に選択が変わっていたら（同期で消えた等）、何もしない。
     private func deleteSelection(_ item: TimelineItem, span: EditSpan) async {
         guard model.selectedItem?.id == item.id else { return }
         await model.deleteSelection(span: span)
@@ -322,6 +309,9 @@ struct DayTimelineView: View {
             },
             onMakeAllDay: { item, day in
                 change(item) { await model.makeAllDay(item, onDay: day, span: $0) }
+            },
+            onResize: { item, end, span in
+                Task { await model.resize(item, toEnd: end, span: span) }
             }
         )
     }
@@ -333,10 +323,22 @@ struct DayTimelineView: View {
     /// 日時を変える。繰り返しの予定は回ごとに分けて変えられるので、先に範囲を聞く。
     private func change(_ item: TimelineItem, _ perform: @escaping (EditSpan) async -> Void) {
         if item.kind == .event, item.hasRecurrence {
-            pendingChange = PendingChange(perform: perform)
+            ask(PendingChange(perform: perform))
         } else {
             Task { await perform(.thisOccurrence) }
         }
+    }
+
+    /// どの回に及ぶかを聞く。Mac は「この回のみ」に枠を置ける AppKit のダイアログ、iPhone は確認ダイアログ。
+    private func ask(_ pending: PendingChange) {
+        #if os(macOS)
+        SpanAlert.present(message: pending.message) { span in
+            guard let span else { return }
+            Task { await pending.perform(span) }
+        }
+        #else
+        pendingChange = pending
+        #endif
     }
 
     /// 期限切れ欄の 1 行。

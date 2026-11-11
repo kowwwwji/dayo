@@ -26,7 +26,9 @@ public final class EventKitRepository: CalendarSource {
 
     public func snapshot(for range: DateInterval, includingOverdue: Bool) async throws -> TimelineSnapshot {
         let eventPredicate = store.predicateForEvents(withStart: range.start, end: range.end, calendars: nil)
-        let events = store.events(matching: eventPredicate).map(TimelineItem.init(event:))
+        let events = store.events(matching: eventPredicate)
+            .filter { Self.isShown($0.calendar) }
+            .map(TimelineItem.init(event:))
 
         let incomplete = await fetchReminderItems(
             matching: store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: nil)
@@ -123,6 +125,26 @@ public final class EventKitRepository: CalendarSource {
                 }
         }
         return writable(.reminder, as: .reminder) + writable(.event, as: .event)
+    }
+
+    public func calendars() async throws -> [CalendarInfo] {
+        func all(_ entity: EKEntityType, as kind: ItemKind) -> [CalendarInfo] {
+            store.calendars(for: entity).filter(Self.isShown).map {
+                CalendarInfo(
+                    id: $0.calendarIdentifier,
+                    name: $0.title,
+                    kind: kind,
+                    color: $0.cgColor ?? TimelineItem.fallbackColor,
+                    accountName: $0.source?.title ?? ""
+                )
+            }
+        }
+        return all(.event, as: .event) + all(.reminder, as: .reminder)
+    }
+
+    /// 画面で扱うカレンダーか。連絡先の誕生日を並べる OS の誕生日カレンダーは扱わない（予定ではないため）。
+    static func isShown(_ calendar: EKCalendar?) -> Bool {
+        calendar?.type != .birthday
     }
 
     // MARK: - 書き込みの共通部分

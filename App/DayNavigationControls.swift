@@ -23,10 +23,14 @@ enum TimelineModeSetting {
 }
 
 /// 前後・今日へ移るボタン。指でもマウスでも押しやすいよう枠付きで大きめにする。
+/// カレンダーのボタンは日付ジャンプを開く。
 /// 「今日」は押すと表示が動くとき（今日を含まない範囲、3 日表示なら今日が左端でないとき）だけ ‹ › の左に現れる。‹ › は右端に固定して位置が変わらないようにする。
 struct DayNavigationControls: View {
     let model: TimelineModel
-
+    /// 日付ジャンプを開いているか。Mac ではキー操作と共有する
+    var dateJump: DateJumpRequest?
+    /// 共有する相手がいないとき（iPhone）の置き場所
+    @State private var ownDateJump = DateJumpRequest()
     /// 「更新中」を出しているか。変更がすぐ届いても押したことが分かるよう、少しのあいだ残す
     @State private var showsRefreshing = false
 
@@ -53,8 +57,24 @@ struct DayNavigationControls: View {
                 .transition(.opacity)
                 .accessibilityElement(children: .combine)
             }
+            if let deletion = model.pendingDeletion {
+                deletionNotice(deletion)
+            }
             if !model.isAlignedWithToday {
                 Button("今日") { Task { await model.showToday() } }
+            }
+            let dateJump = dateJump ?? ownDateJump
+            Button { dateJump.isPresented = true } label: {
+                Image(systemName: "calendar")
+                    .frame(minWidth: 20, minHeight: 20)
+            }
+            .accessibilityLabel("日付へ移動")
+            .help("日付へ移動（g）")
+            .popover(
+                isPresented: Binding(get: { dateJump.isPresented }, set: { dateJump.isPresented = $0 }),
+                arrowEdge: .bottom
+            ) {
+                DateJumpView(model: model) { dateJump.isPresented = false }
             }
             Button { Task { await model.showPrevious() } } label: {
                 Image(systemName: "chevron.left")
@@ -69,6 +89,7 @@ struct DayNavigationControls: View {
         }
         .animation(.default, value: model.isAlignedWithToday)
         .animation(.default, value: showsRefreshing)
+        .animation(.default, value: model.pendingDeletion?.item.id)
         .onChange(of: model.isRefreshing) { _, refreshing in
             if refreshing {
                 showsRefreshing = true
@@ -81,6 +102,37 @@ struct DayNavigationControls: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.large)
+        // 通知が出ても、ボタンは潰さない（縮むのは入力欄の側）
+        .fixedSize()
+    }
+}
+
+extension DayNavigationControls {
+    /// 削除して保留にしている間の通知。実際に消すまでの間は取り消せることを知らせる。
+    private func deletionNotice(_ deletion: PendingDeletion) -> some View {
+        HStack(spacing: 8) {
+            // 長いタイトルは途中を省く。「削除しました」と取り消し方は必ず読めるようにする
+            Text("「\(deletion.item.title)」を削除しました")
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 180, alignment: .trailing)
+            #if os(macOS)
+            Text("⌘z で取り消し")
+                .lineLimit(1)
+                .fixedSize()
+            #else
+            // iPhone にはキーが無いので、ここから取り消す
+            Button("取り消す") { Task { await model.undo() } }
+                .controlSize(.small)
+            #endif
+        }
+        .font(.dayoSmall)
+        .foregroundStyle(.secondary)
+        // 入力欄に押されて折り返さないよう、通知は自分の幅を保つ（縮むのは入力欄の側）
+        .fixedSize()
+        .padding(.trailing, 4)
+        .transition(.opacity)
+        .accessibilityElement(children: .combine)
     }
 }
 

@@ -83,8 +83,11 @@ public final class ItemEditorModel {
     public private(set) var destinations: [Destination] = []
     public private(set) var isSaving = false
     public private(set) var errorMessage: String?
-    /// 保存・削除に成功したあとに呼ぶ。タイムラインの再読み込みに使う。
+    /// 保存に成功したあとに呼ぶ。タイムラインの再読み込みに使う。
     public var onChanged: (@MainActor () async -> Void)?
+    /// 削除を任せる先。削除は取り消せるようタイムラインが実行を遅らせるので、ここでは取得元へ送らない。
+    /// 受けられなかったら false を返す（別の保存の最中など）。
+    public var onDelete: (@MainActor (TimelineItem, EditSpan) async -> Bool)?
 
     private let source: CalendarSource
     private let calendar: Calendar
@@ -318,8 +321,13 @@ public final class ItemEditorModel {
     }
 
     public func delete(span: EditSpan = .thisOccurrence) async -> Bool {
-        guard !isNew else { return false }
-        return await perform { try await self.source.delete(self.item, span: span) }
+        guard !isNew, !isSaving, let onDelete else { return false }
+        guard await onDelete(item, span) else {
+            errorMessage = "いまは削除できません。少し待ってから、もう一度試してください。"
+            return false
+        }
+        errorMessage = nil
+        return true
     }
 
     private func perform(_ operation: () async throws -> Void) async -> Bool {

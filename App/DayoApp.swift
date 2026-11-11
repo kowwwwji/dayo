@@ -8,23 +8,29 @@ struct DayoApp: App {
     @State private var quickInputFocus = QuickInputFocus()
     private let source = EventKitRepository()
     #if os(macOS)
-    @NSApplicationDelegateAdaptor private var dockIcon: DockIconDelegate
+    @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     #endif
 
     init() {
-        let timeline = TimelineModel(source: source, mode: TimelineModeSetting.stored)
+        let timeline = TimelineModel(
+            source: source, mode: TimelineModeSetting.stored, hiddenCalendarIDs: CalendarVisibilitySetting.stored
+        )
         let quickInput = QuickInputModel(source: source)
         // 変更通知でも反映されるが、自分の登録は待たずに読み直す
         quickInput.onCreated = { await timeline.load() }
         _model = State(initialValue: timeline)
+        #if os(macOS)
+        AppDelegate.timeline = timeline
+        #endif
         _quickInput = State(initialValue: quickInput)
     }
 
-    /// 詳細編集のモデル。保存・削除後はタイムラインを読み直す
+    /// 詳細編集のモデル。保存後はタイムラインを読み直す。削除はタイムラインへ任せる（取り消せる間を置くため）
     private func makeEditor(for item: TimelineItem) -> ItemEditorModel {
         let editor = ItemEditorModel(item: item, source: source)
         let timeline = model
         editor.onChanged = { await timeline.load() }
+        editor.onDelete = { await timeline.delete($0, span: $1) }
         return editor
     }
 

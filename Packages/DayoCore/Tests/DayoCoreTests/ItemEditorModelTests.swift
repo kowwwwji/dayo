@@ -258,13 +258,40 @@ private func item(
         #expect(changed == 0)
     }
 
-    @Test func deleteSendsSpan() async {
+    /// 削除は自分では行わず、タイムラインへ任せる（取り消せるよう、実際の削除を遅らせるため）。
+    @Test func deleteHandsTheItemAndSpanToTheHandler() async {
+        let source = EditingSource()
+        let event = item(kind: .event, start: tuesday10, end: date(2026, 11, 10, 11))
+        let model = makeModel(event, source: source)
+        var handed: [(item: TimelineItem, span: EditSpan)] = []
+        model.onDelete = {
+            handed.append(($0, $1))
+            return true
+        }
+
+        #expect(await model.delete(span: .futureOccurrences))
+
+        #expect(handed.map(\.item) == [event])
+        #expect(handed.map(\.span) == [.futureOccurrences])
+        #expect(source.deletes.isEmpty)
+    }
+
+    /// 任せた先が受けなかったら（別の保存の最中など）、閉じずに知らせる。黙って閉じると、消えたと思い込む。
+    @Test func deleteReportsWhenTheHandlerDidNotTakeTheItem() async {
+        let source = EditingSource()
+        let model = makeModel(item(kind: .event, start: tuesday10, end: date(2026, 11, 10, 11)), source: source)
+        model.onDelete = { _, _ in false }
+
+        #expect(await model.delete() == false)
+        #expect(model.errorMessage != nil)
+    }
+
+    @Test func deleteDoesNothingWithoutAHandler() async {
         let source = EditingSource()
         let model = makeModel(item(kind: .event, start: tuesday10, end: date(2026, 11, 10, 11)), source: source)
 
-        #expect(await model.delete(span: .thisOccurrence))
-        #expect(source.deletes.count == 1)
-        #expect(source.deletes[0].span == .thisOccurrence)
+        #expect(await model.delete() == false)
+        #expect(source.deletes.isEmpty)
     }
 
     @Test func theLocationIsKeptAsItIsOnSave() {
