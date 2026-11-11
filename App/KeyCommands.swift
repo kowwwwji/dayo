@@ -16,6 +16,15 @@ enum TimelineKey {
     case showPrevious
     case showNext
 
+    /// キーを押し続けたときに繰り返すか。選択の移動だけ繰り返す。
+    /// 完了の切替は保存が終わる前に次が来ると同じ状態を二重に書き込むので、繰り返さない。
+    var repeats: Bool {
+        switch self {
+        case .selectNext, .selectPrevious, .selectLeft, .selectRight: true
+        default: false
+        }
+    }
+
     /// キー入力に当たる操作。修飾キーなしの単キーと、⌘← / ⌘→。
     init?(_ event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
@@ -83,18 +92,37 @@ private struct KeyCatcher: NSViewRepresentable {
             super.viewDidMoveToWindow()
             removeMonitor()
             guard let window else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { [weak self] event in
                 guard let self else { return event }
+                if event.type == .leftMouseDown {
+                    self.takeFocusIfClicked(event)
+                    return event
+                }
                 if self.leavesTextField(event) { return nil }
-                guard self.accepts(event), let key = TimelineKey(event), self.action?(key) == true
-                else { return event }
-                return nil
+                guard self.accepts(event), let key = TimelineKey(event) else { return event }
+                // 押しっぱなしの繰り返しは、繰り返さない操作では捨てる
+                if event.isARepeat, !key.repeats { return nil }
+                return self.action?(key) == true ? nil : event
             }
             // 起動時はキー操作を受けられる状態から始める（入力欄へは ⌘N）
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.window === window else { return }
                 window.makeFirstResponder(self)
             }
+        }
+
+        /// 割り当ての無いキーは黙って捨てる（既定のままだと警告音が鳴る）。Esc だけは流して、フルスクリーンを抜ける等の既定動作を残す。
+        override func keyDown(with event: NSEvent) {
+            if event.charactersIgnoringModifiers == "\u{1b}" { super.keyDown(with: event) }
+        }
+
+        /// 入力欄にいるときにタイムラインをクリックしたら、キー操作を受けられる状態へ戻す。クリックそのものは奪わない。
+        private func takeFocusIfClicked(_ event: NSEvent) {
+            guard let window, event.window === window, window.attachedSheet == nil,
+                  window.firstResponder is NSText,
+                  bounds.contains(convert(event.locationInWindow, from: nil))
+            else { return }
+            window.makeFirstResponder(self)
         }
 
         /// 入力欄での Esc。入力欄を抜けてキー操作を受けられる状態へ戻す。変換中の Esc は変換の取り消しなので触らない。
