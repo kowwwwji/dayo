@@ -130,9 +130,9 @@ struct DayTimelineView: View {
     /// 繰り返しの予定だけは、どの回かを聞く。
     private func delete(_ item: TimelineItem) {
         if item.kind == .event, item.hasRecurrence {
-            pendingChange = PendingChange(message: "「\(item.title)」のどの回を削除しますか？") {
+            ask(PendingChange(message: "「\(item.title)」のどの回を削除しますか？") {
                 await deleteSelection(item, span: $0)
-            }
+            })
         } else {
             Task { await model.deleteSelection(span: .thisOccurrence) }
         }
@@ -323,10 +323,22 @@ struct DayTimelineView: View {
     /// 日時を変える。繰り返しの予定は回ごとに分けて変えられるので、先に範囲を聞く。
     private func change(_ item: TimelineItem, _ perform: @escaping (EditSpan) async -> Void) {
         if item.kind == .event, item.hasRecurrence {
-            pendingChange = PendingChange(perform: perform)
+            ask(PendingChange(perform: perform))
         } else {
             Task { await perform(.thisOccurrence) }
         }
+    }
+
+    /// どの回に及ぶかを聞く。Mac は「この回のみ」に枠を置ける AppKit のダイアログ、iPhone は確認ダイアログ。
+    private func ask(_ pending: PendingChange) {
+        #if os(macOS)
+        SpanAlert.present(message: pending.message) { span in
+            guard let span else { return }
+            Task { await pending.perform(span) }
+        }
+        #else
+        pendingChange = pending
+        #endif
     }
 
     /// 期限切れ欄の 1 行。

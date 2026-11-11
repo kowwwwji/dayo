@@ -63,6 +63,15 @@ struct DayGridView: View {
         case resize(GridResizeRequest)
     }
 
+    /// Mac は `SpanAlert` で聞くので、確認ダイアログは iPhone だけ。
+    private static var usesConfirmationDialog: Bool {
+        #if os(macOS)
+        false
+        #else
+        true
+        #endif
+    }
+
     private var pendingMove: GridMove? {
         if case .move(let move) = pendingChange { move } else { nil }
     }
@@ -153,7 +162,10 @@ struct DayGridView: View {
             }
             .confirmationDialog(
                 "繰り返しの予定です",
-                isPresented: Binding(get: { pendingChange != nil }, set: { if !$0 { pendingChange = nil } }),
+                isPresented: Binding(
+                    get: { Self.usesConfirmationDialog && pendingChange != nil },
+                    set: { if !$0 { pendingChange = nil } }
+                ),
                 titleVisibility: .visible,
                 presenting: pendingChange
             ) { change in
@@ -195,10 +207,25 @@ struct DayGridView: View {
             minute: target.minute
         )
         if item.kind == .event, item.hasRecurrence {
-            pendingChange = .move(move)
+            ask(.move(move))
         } else {
             onMove(move, .thisOccurrence)
         }
+    }
+
+    /// どの回に及ぶかを聞く。聞いている間は、変えた見た目のまま置いておく。
+    /// Mac は「この回のみ」に枠を置ける AppKit のダイアログ、iPhone は確認ダイアログ（`pendingChange` が出す）。
+    private func ask(_ change: PendingChange) {
+        pendingChange = change
+        #if os(macOS)
+        let presented = SpanAlert.present(
+            message: { if case .resize = change { "どの回の長さを変えますか？" } else { "どの回の日時を変えますか？" } }()
+        ) { span in
+            pendingChange = nil
+            if let span { perform(change, span: span) }
+        }
+        if !presented { pendingChange = nil }
+        #endif
     }
 
     private func perform(_ change: PendingChange, span: EditSpan) {
@@ -231,7 +258,7 @@ struct DayGridView: View {
                 guard newEnd != endMinute else { return }
                 let request = GridResizeRequest(item: item, day: day, endMinute: newEnd)
                 if item.hasRecurrence {
-                    pendingChange = .resize(request)
+                    ask(.resize(request))
                 } else {
                     perform(.resize(request), span: .thisOccurrence)
                 }
