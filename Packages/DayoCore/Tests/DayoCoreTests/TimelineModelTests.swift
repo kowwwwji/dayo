@@ -1181,35 +1181,106 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         await task.value
     }
 
-    @Test func movingByADayStopsAtTheEdgesOfTheWeek() async {
-        let (model, source) = await loaded([
-            make("sun", "2026-11-08T09:00:00Z"),
-            make("sat", "2026-11-14T09:00:00Z"),
-        ])
+    @Test func movingByADayPastTheEndOfTheWeekFollowsTheItemToTheNextWeek() async {
+        let source = FakeSource()
+        source.snapshots[nextWeekStart] = TimelineSnapshot(
+            items: [make("sat#2", calendarItem: "sat", "2026-11-15T09:00:00Z")], overdue: []
+        )
+        let (model, _) = await loaded([make("sat#1", calendarItem: "sat", "2026-11-14T09:00:00Z")], source: source)
         model.selectNext()
-        #expect(model.selection == grid("sun", 8))
-        await model.moveSelectionByDay(-1, span: .thisOccurrence)
-        await model.selectRight()
-        #expect(model.selection == grid("sat", 14))
-        await model.moveSelectionByDay(1, span: .thisOccurrence)
+        #expect(model.selection == grid("sat#1", 14))
 
-        #expect(source.updates.isEmpty)
-        #expect(model.range.start == weekStart)
+        await model.moveSelectionByDay(1, span: .futureOccurrences)
+
+        #expect(source.updates.map(\.draft.start) == [iso("2026-11-15T09:00:00Z")])
+        #expect(source.updates.map(\.span) == [.futureOccurrences])
+        #expect(model.range.start == nextWeekStart)
+        #expect(model.selection == grid("sat#2", 15))
     }
 
-    @Test func allDayItemsMoveByADayAndStayInTheWeek() async {
-        let (model, source) = await loaded([make("sat", "2026-11-14T00:00:00Z", hours: 24, allDay: true)])
+    @Test func movingByADayPastTheStartOfTheWeekFollowsTheItemToThePreviousWeek() async {
+        let source = FakeSource()
+        source.snapshots[previousWeekStart] = TimelineSnapshot(
+            items: [make("sun", "2026-11-07T09:00:00Z")], overdue: []
+        )
+        let (model, _) = await loaded([make("sun", "2026-11-08T09:00:00Z")], source: source)
+        model.selectNext()
+
+        await model.moveSelectionByDay(-1, span: .thisOccurrence)
+
+        #expect(source.updates.map(\.draft.start) == [iso("2026-11-07T09:00:00Z")])
+        #expect(model.range.start == previousWeekStart)
+        #expect(model.selection == grid("sun", 7))
+    }
+
+    @Test func aFailedMoveOutOfTheWeekKeepsTheViewAndShowsTheError() async {
+        let source = FakeSource()
+        source.updateError = TestError()
+        let (model, _) = await loaded([make("sat", "2026-11-14T09:00:00Z")], source: source)
+        model.selectNext()
+
+        await model.moveSelectionByDay(1, span: .thisOccurrence)
+
+        #expect(model.range.start == weekStart)
+        #expect(model.errorMessage != nil)
+        #expect(model.selection == grid("sat", 14))
+    }
+
+    @Test func aSecondMoveIsIgnoredWhileAMoveOutOfTheWeekIsBeingSaved() async {
+        let (model, source) = await loaded([make("sat", "2026-11-14T09:00:00Z")])
+        model.selectNext()
+        source.gate = true
+
+        let task = Task { await model.moveSelectionByDay(1, span: .thisOccurrence) }
+        await source.waitForPending(1)
+        await model.moveSelectionByDay(1, span: .thisOccurrence)
+        await model.moveSelectionInTime(1, span: .thisOccurrence)
+
+        #expect(source.updates.count == 1)
+        source.release(at: 0)
+        await task.value
+    }
+
+    @Test func allDayItemsMoveByADayAndTheViewFollowsPastTheEdge() async {
+        let source = FakeSource()
+        source.snapshots[nextWeekStart] = TimelineSnapshot(
+            items: [make("sat", "2026-11-15T00:00:00Z", hours: 24, allDay: true)], overdue: []
+        )
+        let (model, _) = await loaded([make("sat", "2026-11-14T00:00:00Z", hours: 24, allDay: true)], source: source)
         model.selectNext()
         #expect(model.selection == TimelineSelection(itemID: "sat", place: .allDay))
-
-        // 土曜の終日は右へは動かせない（週の外に出る）
-        await model.moveSelectionByDay(1, span: .thisOccurrence)
-        #expect(source.updates.isEmpty)
 
         await model.moveSelectionByDay(-1, span: .thisOccurrence)
         #expect(source.updates.map(\.draft.start) == [iso("2026-11-13T00:00:00Z")])
         #expect(source.updates.map(\.draft.isAllDay) == [true])
         #expect(model.selection == TimelineSelection(itemID: "sat", place: .allDay))
+        #expect(model.range.start == weekStart)
+
+        // 土曜の終日を右へ動かすと、次の週へ移って選択も付いていく
+        await model.moveSelectionByDay(1, span: .thisOccurrence)
+        #expect(source.updates.map(\.draft.start).last == iso("2026-11-15T00:00:00Z"))
+        #expect(model.range.start == nextWeekStart)
+        #expect(model.selection == TimelineSelection(itemID: "sat", place: .allDay))
+        #expect(model.selectedItem?.start == iso("2026-11-15T00:00:00Z"))
+    }
+
+    @Test func aMultiDayAllDayItemMovesPartlyOutOfTheWeekWithoutMovingTheView() async {
+        // 日〜月の帯を、月曜の列から選ぶ。左へ動かすと帯の頭は前の週へ出るが、いまいる列は日曜に残る
+        let (model, source) = await loaded([
+            make("trip", "2026-11-08T00:00:00Z", hours: 48, allDay: true),
+            make("x", "2026-11-09T09:00:00Z"),
+        ])
+        model.selectNext()
+        await model.selectRight()
+        #expect(model.selection == grid("x", 9))
+        model.selectPrevious()
+        #expect(model.selection == TimelineSelection(itemID: "trip", place: .allDay))
+
+        await model.moveSelectionByDay(-1, span: .thisOccurrence)
+
+        #expect(source.updates.map(\.draft.start) == [iso("2026-11-07T00:00:00Z")])
+        #expect(model.range.start == weekStart)
+        #expect(model.selection == TimelineSelection(itemID: "trip", place: .allDay))
     }
 
     @Test func nothingMovesInTimeForAllDayOverdueOrReadOnlyItems() async {
@@ -1230,19 +1301,40 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(source.updates.map(\.item.id) == ["holiday"])
     }
 
-    @Test func nothingMovesByADayInDayMode() async {
-        let (model, source) = await loaded([
-            make("holiday", "2026-11-10T00:00:00Z", hours: 24, allDay: true),
-            make("x", "2026-11-10T09:00:00Z"),
-        ], mode: .day)
+    @Test func movingByADayInDayModeShowsTheDayTheItemMovedTo() async {
+        let source = FakeSource()
+        source.snapshots[day(11)] = TimelineSnapshot(
+            items: [make("x#2", calendarItem: "x", "2026-11-11T09:00:00Z")], overdue: []
+        )
+        source.snapshots[today] = TimelineSnapshot(
+            items: [make("x#1", calendarItem: "x", "2026-11-10T09:00:00Z")], overdue: []
+        )
+        let model = TimelineModel(source: source, calendar: utc, mode: .day) { self.today }
+        await model.activate()
+        model.selectNext()
 
-        for _ in 0..<2 {
-            model.selectNext()
-            await model.moveSelectionByDay(1, span: .thisOccurrence)
-        }
+        await model.moveSelectionByDay(1, span: .thisOccurrence)
 
-        #expect(source.updates.isEmpty)
-        #expect(model.day == today)
+        #expect(source.updates.map(\.draft.start) == [iso("2026-11-11T09:00:00Z")])
+        #expect(model.day == day(11))
+        #expect(model.selection == grid("x#2", 11))
+    }
+
+    @Test func movingAnAllDayItemByADayInDayModeShowsTheDayItMovedTo() async {
+        let source = FakeSource()
+        source.snapshots[day(9)] = TimelineSnapshot(
+            items: [make("holiday", "2026-11-09T00:00:00Z", hours: 24, allDay: true)], overdue: []
+        )
+        let (model, _) = await loaded(
+            [make("holiday", "2026-11-10T00:00:00Z", hours: 24, allDay: true)], mode: .day, source: source
+        )
+        model.selectNext()
+
+        await model.moveSelectionByDay(-1, span: .thisOccurrence)
+
+        #expect(source.updates.map(\.draft.start) == [iso("2026-11-09T00:00:00Z")])
+        #expect(model.day == day(9))
+        #expect(model.selection == TimelineSelection(itemID: "holiday", place: .allDay))
     }
 
     @Test func nothingMovesWithoutASelection() async {
@@ -1622,19 +1714,18 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.selection == grid("e", 14))
     }
 
-    @Test func movingTheSelectionByADayStopsAtTheEdgesOfTheThreeDays() async {
-        let (model, source) = await loaded([
-            event("a", "2026-11-10T09:00:00Z"),
-            event("c", "2026-11-12T09:00:00Z"),
-        ])
+    @Test func movingTheSelectionByADayPastTheEdgeShiftsTheThreeDaysByOneDay() async {
+        let (model, source) = await loaded(
+            [event("c", "2026-11-12T09:00:00Z")], later: [11: [event("c", "2026-11-13T09:00:00Z")]]
+        )
         model.selectNext()
-        await model.moveSelectionByDay(-1, span: .thisOccurrence)
-        await model.selectRight()
         #expect(model.selection == grid("c", 12))
+
         await model.moveSelectionByDay(1, span: .thisOccurrence)
 
-        #expect(source.updates.isEmpty)
-        #expect(model.day == today)
+        #expect(source.updates.map(\.draft.start) == [iso("2026-11-13T09:00:00Z")])
+        #expect(model.columns.map(\.day) == [day(11), day(12), day(13)])
+        #expect(model.selection == grid("c", 13))
     }
 
     @Test func movingTheSelectionByADayWorksInsideTheThreeDays() async {

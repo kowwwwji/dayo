@@ -246,31 +246,50 @@ public final class TimelineModel {
         await moveSelection(placement.item, with: ItemDraft(moving: placement.item, to: moved), to: position, span: span)
     }
 
-    /// 選択中の項目を前（`direction` が負）/ 次の日へ動かす。表示中の日の外へは出さない（日表示では動かない）。
+    /// 選択中の項目を前（`direction` が負）/ 次の日へ動かす。行き先が表示中の日の外なら、表示も項目の見える範囲へ移る。
     public func moveSelectionByDay(_ direction: Int, span: EditSpan) async {
         guard let position = cursorPosition, let item = selectedItem, isChangeable(item), let start = item.start,
-              let shifted = calendar.date(byAdding: .day, value: direction, to: start)
+              let shifted = calendar.date(byAdding: .day, value: direction, to: start),
+              let targetDay = calendar.date(byAdding: .day, value: direction, to: position.day)
         else { return }
-        let days = days
+        let draft: ItemDraft
+        let place: TimelineSelection.Place
         switch position.selection.place {
         case .overdue:
             return
         case .allDay:
-            // 帯の最初の日が表示中の日の中に残る範囲で動かす（ドラッグと同じ）
-            guard let band = allDaySpans.first(where: { $0.item.id == item.id }),
-                  days.indices.contains(band.firstColumn + direction),
-                  let day = calendar.date(byAdding: .day, value: direction, to: position.day)
-            else { return }
-            let target = TimelineCursor.Position(selection: position.selection, day: days.contains(day) ? day : position.day)
-            await moveSelection(item, with: ItemDraft(moving: item, to: shifted, isAllDay: true), to: target, span: span)
-        case .grid(let day):
-            guard let index = days.firstIndex(of: day), days.indices.contains(index + direction) else { return }
-            let targetDay = days[index + direction]
-            let target = TimelineCursor.Position(
-                selection: TimelineSelection(itemID: item.id, place: .grid(day: targetDay)), day: targetDay
-            )
-            await moveSelection(item, with: ItemDraft(moving: item, to: shifted), to: target, span: span)
+            draft = ItemDraft(moving: item, to: shifted, isAllDay: true)
+            place = .allDay
+        case .grid:
+            draft = ItemDraft(moving: item, to: shifted)
+            place = .grid(day: targetDay)
         }
+        let target = TimelineCursor.Position(selection: TimelineSelection(itemID: item.id, place: place), day: targetDay)
+        if days.contains(targetDay) {
+            await moveSelection(item, with: draft, to: target, span: span)
+        } else {
+            await moveSelectionOutOfView(item, with: draft, to: target, by: direction, span: span)
+        }
+    }
+
+    /// 選択中の項目を表示の外の日へ動かす。保存してから表示を進め、動かした項目を選び直す。
+    /// 表示を先に動かさないのは、保存に失敗したとき項目の無い範囲へ移ったままになるのを避けるため。
+    private func moveSelectionOutOfView(
+        _ item: TimelineItem, with draft: ItemDraft, to target: TimelineCursor.Position, by direction: Int,
+        span: EditSpan
+    ) async {
+        guard !isMovingSelection else { return }
+        isMovingSelection = true
+        defer { isMovingSelection = false }
+        do {
+            try await source.update(item, with: draft, span: span)
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
+        await showAdjacent(by: direction)
+        guard isLoadedForRange else { return }
+        cursorPosition = self.position(of: item, startingAt: draft.start, like: target)
     }
 
     /// 選択中の項目の日時を変え、選択を動かした先へ付け替える。
