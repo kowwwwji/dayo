@@ -1,11 +1,11 @@
 import DayoCore
 import SwiftUI
 
-/// 表示モード（日 | 週）の保存。起動時にモデルへ渡し、切り替えたら書き戻す。
+/// 表示モード（日 | 3 日 | 週）の保存。起動時にモデルへ渡し、切り替えたら書き戻す。
 enum TimelineModeSetting {
     static let key = "timelineMode"
 
-    /// 週表示は当面 Mac のみ。iPhone は常に日表示。
+    /// 3 日表示と週表示は当面 Mac のみ。iPhone は常に日表示。
     static var stored: TimelineMode {
         #if os(macOS)
         UserDefaults.standard.string(forKey: key).flatMap(TimelineMode.init(rawValue:)) ?? .day
@@ -27,6 +27,7 @@ enum TimelineModeSetting {
 struct DayNavigationControls: View {
     let model: TimelineModel
 
+    /// 前後に動く単位。3 日表示も 1 日ずつ動く。
     private var unit: String { model.mode == .week ? "週" : "日" }
 
     var body: some View {
@@ -51,36 +52,7 @@ struct DayNavigationControls: View {
     }
 }
 
-/// ウィンドウや画面のタイトルに出す日付。日表示は「2026 / 11 / 10 (火) W46」、週表示は「2026 / 11  W46」の形。
-/// 年は西暦（システムが和暦でも）。週番号は ISO 8601（月曜始まり）。設定で消せる。
+/// タイトルの週番号を出すかの保存。タイトルの組み立ては `TimelineTitle`。
 enum DayTitle {
     static let showsWeekNumberKey = "showsWeekNumber"
-
-    static func text(for day: Date, showsWeekNumber: Bool) -> String {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = .autoupdatingCurrent
-        let parts = calendar.dateComponents([.year, .month, .day], from: day)
-        let weekday = day.formatted(.dateTime.weekday(.narrow).locale(Locale(identifier: "ja_JP")))
-        var text = "\(parts.year ?? 0) / \(parts.month ?? 0) / \(parts.day ?? 0) (\(weekday))"
-        if showsWeekNumber {
-            let week = Calendar(identifier: .iso8601).component(.weekOfYear, from: day)
-            text += " W\(week)"
-        }
-        return text
-    }
-
-    /// 週表示のタイトル。年月は週の最初の日のもの。
-    /// 週番号は週の中の木曜で決める（ISO の週は木曜が属する週。日曜始まりの週でも月〜土と同じ番号になる）。
-    static func text(forWeek days: [Date], showsWeekNumber: Bool) -> String {
-        guard let first = days.first else { return "" }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = .autoupdatingCurrent
-        let parts = calendar.dateComponents([.year, .month], from: first)
-        var text = "\(parts.year ?? 0) / \(parts.month ?? 0)"
-        if showsWeekNumber {
-            let thursday = days.first { calendar.component(.weekday, from: $0) == 5 } ?? first
-            text += "  W\(Calendar(identifier: .iso8601).component(.weekOfYear, from: thursday))"
-        }
-        return text
-    }
 }

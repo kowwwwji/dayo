@@ -16,8 +16,9 @@ struct RootView: View {
 
     private var title: String {
         switch model.mode {
-        case .day, .threeDays: DayTitle.text(for: model.day, showsWeekNumber: showsWeekNumber)
-        case .week: DayTitle.text(forWeek: model.days, showsWeekNumber: showsWeekNumber)
+        case .day: TimelineTitle.text(for: model.day, showsWeekNumber: showsWeekNumber)
+        case .threeDays: TimelineTitle.text(forDays: model.days, showsWeekNumber: showsWeekNumber)
+        case .week: TimelineTitle.text(forWeek: model.days, showsWeekNumber: showsWeekNumber)
         }
     }
 
@@ -27,7 +28,7 @@ struct RootView: View {
             get: { sidebarHidden ? .detailOnly : .all },
             set: { sidebarHidden = $0 == .detailOnly }
         )) {
-            // 日表示と週表示をここで切り替える
+            // 表示（日 / 3 日 / 週）をここで切り替える
             // TODO: リマインダーリストの一覧を足す
             List(selection: Binding<TimelineMode?>(
                 get: { model.mode },
@@ -36,6 +37,7 @@ struct RootView: View {
                 }
             )) {
                 Label("日表示", systemImage: "sun.max").tag(TimelineMode.day)
+                Label("3日表示", systemImage: "rectangle.split.3x1").tag(TimelineMode.threeDays)
                 Label("週表示", systemImage: "calendar").tag(TimelineMode.week)
             }
             .navigationSplitViewColumnWidth(min: 160, ideal: 200)

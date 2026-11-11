@@ -190,19 +190,19 @@ struct KeyHelpView: View {
     private static let sections = [
         Section(title: "選ぶ", rows: [
             ("j / k", "下 / 上の項目を選ぶ"),
-            ("h / l", "週: 隣の日の列へ　日: 前 / 次の日へ"),
+            ("h / l", "3日・週: 隣の日の列へ　日: 前 / 次の日へ"),
             ("esc", "選択を解除（入力欄では入力欄を抜ける）"),
         ]),
         Section(title: "選択中の項目", rows: [
             ("return", "編集を開く"),
             ("space", "リマインダーを完了 / 未完了"),
             ("⇧j / ⇧k", "15 分遅く / 早く"),
-            ("⇧h / ⇧l", "前 / 次の日へ（週表示）"),
+            ("⇧h / ⇧l", "前 / 次の日へ（3日表示・週表示）"),
         ]),
         Section(title: "表示", rows: [
             ("t", "今日へ"),
             ("⌘← / ⌘→", "前 / 次の日（週表示では週）"),
-            ("⌘1 / ⌘2", "日表示 / 週表示"),
+            ("⌘1 / ⌘2 / ⌘3", "日表示 / 3日表示 / 週表示"),
             ("⌃⌘s", "サイドバーを出す / 隠す"),
         ]),
         Section(title: "そのほか", rows: [
@@ -269,8 +269,10 @@ struct TimelineCommands: Commands {
         CommandGroup(replacing: .sidebar) {
             Button("日表示") { TimelineModeSetting.set(.day, on: model) }
                 .keyboardShortcut("1")
-            Button("週表示") { TimelineModeSetting.set(.week, on: model) }
+            Button("3日表示") { TimelineModeSetting.set(.threeDays, on: model) }
                 .keyboardShortcut("2")
+            Button("週表示") { TimelineModeSetting.set(.week, on: model) }
+                .keyboardShortcut("3")
             Divider()
             Button("サイドバーを表示 / 非表示") { SidebarSetting.toggle() }
                 .keyboardShortcut("s", modifiers: [.control, .command])

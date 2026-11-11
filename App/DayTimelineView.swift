@@ -1,7 +1,7 @@
 import DayoCore
 import SwiftUI
 
-/// 予定と Todo を 1 本の時間軸で見せる。日表示は 1 列、週表示は 7 列。
+/// 予定と Todo を 1 本の時間軸で見せる。日表示は 1 列、3 日表示は 3 列、週表示は 7 列。
 /// 上部に終日・期限切れ、中央に時刻付きのグリッド。期日なしのリマインダーは扱わない。
 struct DayTimelineView: View {
     let model: TimelineModel
@@ -162,7 +162,7 @@ struct DayTimelineView: View {
                 Divider()
             }
             // 終日欄は空でも出す。ダブルクリックでの登録と、時間軸からのドラッグの落とし先になるため
-            if model.mode == .week {
+            if model.mode != .day {
                 // 列と見出しがずれないよう、日付はモデルの範囲ではなく実際に並んでいる列から取る
                 WeekHeaderView(
                     days: model.columns.map(\.day),
@@ -197,7 +197,7 @@ struct DayTimelineView: View {
             Text("どの回の日時を変えますか？")
         }
         .overlay {
-            // 週表示は空でも曜日と時間軸を見せる
+            // 列が複数の表示は空でも曜日と時間軸を見せる
             if model.mode == .day, model.hasLoaded, model.timeline.isEmpty {
                 ContentUnavailableView("予定も Todo もありません", systemImage: "checkmark.circle")
             }
