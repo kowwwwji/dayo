@@ -34,6 +34,20 @@ struct EarlyReminderPicker: View {
 }
 
 /// 早期リマインダーが付いている項目に出す小さなベル。
+/// 繰り返しのある項目に付ける印。タイトルの横に小さく出す。
+struct RecurrenceMark: View {
+    let item: TimelineItem
+
+    var body: some View {
+        if item.hasRecurrence {
+            Image(systemName: "repeat")
+                .font(.dayoDetail)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("繰り返し")
+        }
+    }
+}
+
 struct EarlyReminderMark: View {
     let minutes: Int?
 

@@ -23,6 +23,7 @@ struct TimelineRow: View {
                     .strikethrough(item.isCompleted)
                     .foregroundStyle(item.isCompleted ? .secondary : .primary)
                     .lineLimit(1)
+                RecurrenceMark(item: item)
                 EarlyReminderMark(minutes: item.earlyReminderMinutes)
                 HStack(spacing: 6) {
                     if let time = timeText {

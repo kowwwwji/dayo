@@ -480,9 +480,12 @@ private struct GridItemView: View {
             HStack(alignment: .top, spacing: 0) {
                 Rectangle().fill(color).frame(width: 3)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(item.title)
-                        .font(.dayoTitle.weight(.semibold))
-                        .lineLimit(placement.durationMinutes >= 60 ? 2 : 1)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(item.title)
+                            .font(.dayoTitle.weight(.semibold))
+                            .lineLimit(placement.durationMinutes >= 60 ? 2 : 1)
+                        RecurrenceMark(item: item)
+                    }
                     if placement.durationMinutes >= 45, let start = item.start, let end = item.end {
                         Text("\(start.formatted(date: .omitted, time: .shortened))–\(end.formatted(date: .omitted, time: .shortened))")
                             .font(.dayoDetail)
@@ -521,6 +524,7 @@ private struct GridItemView: View {
                         .strikethrough(item.isCompleted)
                         .foregroundStyle(item.isCompleted ? .secondary : .primary)
                         .lineLimit(1)
+                    RecurrenceMark(item: item)
                     EarlyReminderMark(minutes: item.earlyReminderMinutes)
                     Spacer(minLength: 0)
                 }
