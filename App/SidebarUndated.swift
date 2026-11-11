@@ -45,6 +45,7 @@ struct SidebarUndated: View {
 
     /// エディタを開く場所のキー。
     private static let anchor = "undated"
+    private static let rowHeight: CGFloat = 28
 
     private var editing: ItemEditing {
         ItemEditing(editor: $editor, anchor: $editorAnchor, make: makeEditor, makeNew: makeNewEditor)
@@ -52,21 +53,33 @@ struct SidebarUndated: View {
 
     var body: some View {
         if !model.undated.isEmpty {
-            Section {
-                ForEach(model.undated) { item in
-                    row(item)
-                }
-            } header: {
+            VStack(alignment: .leading, spacing: 0) {
+                Divider()
                 HStack {
                     Text("期日なし")
                     Spacer(minLength: 0)
                     Text("\(model.undated.count)")
                         .monospacedDigit()
                 }
-                // 見出しは行より右へはみ出すので、件数が端で切れないよう寄せる
-                .padding(.trailing, 8)
+                // 上のカレンダー一覧の見出しと同じ見た目にする
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 10)
+                .padding(.bottom, 4)
                 .accessibilityElement(children: .combine)
+                // 多いときは 7 行で止めて、残りはスクロール（上の一覧を押し出さないように）
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(model.undated) { item in
+                            row(item)
+                                .frame(height: Self.rowHeight)
+                        }
+                    }
+                }
+                .frame(height: min(CGFloat(model.undated.count), 7) * Self.rowHeight)
             }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 8)
         }
     }
 
