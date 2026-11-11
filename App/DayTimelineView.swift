@@ -233,7 +233,9 @@ struct DayTimelineView: View {
             titleVisibility: .visible,
             presenting: pendingDelete
         ) { item in
-            Button("削除", role: .destructive) { Task { await deleteSelection(item, span: .thisOccurrence) } }
+            // return で削除するので、既定のボタンとして見えるようにする。破壊的操作の役割を付けると
+            // macOS は既定のボタンとして描かず、キャンセルが選ばれているように見えてしまう
+            Button("削除") { Task { await deleteSelection(item, span: .thisOccurrence) } }
                 .keyboardShortcut(.defaultAction)
             Button("キャンセル", role: .cancel) {}
         } message: { _ in
