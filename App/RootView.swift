@@ -6,6 +6,7 @@ import SwiftUI
 struct RootView: View {
     let model: TimelineModel
     let quickInput: QuickInputModel
+    var quickInputFocus: QuickInputFocus?
     let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
     let makeNewEditor: @MainActor (Date, Bool) -> ItemEditorModel
     @AppStorage(DayTitle.showsWeekNumberKey) private var showsWeekNumber = true
@@ -28,7 +29,7 @@ struct RootView: View {
         } detail: {
             VStack(spacing: 0) {
                 // 日 | 週 の切替と日付の移動は入力欄と同じ行の右端に置く。日付そのものはウィンドウタイトルに出す
-                QuickInputBar(model: quickInput) {
+                QuickInputBar(model: quickInput, focus: quickInputFocus) {
                     DayNavigationControls(model: model)
                 }
                 Divider()

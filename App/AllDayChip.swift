@@ -20,7 +20,7 @@ struct AllDayChip: View {
     }
 
     /// エディタを開く場所のキー。同じリマインダーが期限切れ欄にも出ることがあるので、そちらと区別する。
-    private static let anchor = "allDay"
+    private static let anchor = TimelineSelection.Place.allDay.editorAnchor
 
     private var color: Color { Color(cgColor: item.color) }
 

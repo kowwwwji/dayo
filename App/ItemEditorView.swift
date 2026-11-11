@@ -49,6 +49,17 @@ struct ItemEditing {
     }
 }
 
+extension TimelineSelection.Place {
+    /// エディタを開く場所のキー。項目を描く側と、キー操作で開く側が同じ値を使う。
+    var editorAnchor: String {
+        switch self {
+        case .overdue: "overdue"
+        case .allDay: "allDay"
+        case .grid(let day): "grid-\(day.timeIntervalSince1970)"
+        }
+    }
+}
+
 extension View {
     /// 新規登録のエディタを、登録先を示す仮の項目に付けて出す。
     func newItemEditor(_ editing: ItemEditing, at anchor: String) -> some View {

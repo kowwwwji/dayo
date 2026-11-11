@@ -356,7 +356,7 @@ struct DayGridView: View {
     }
 
     /// エディタを開いた場所のキー。日をまたぐ予定は複数の列に出るので、列の日で区別する。
-    private static func anchor(for day: Date) -> String { "grid-\(day.timeIntervalSince1970)" }
+    private static func anchor(for day: Date) -> String { TimelineSelection.Place.grid(day: day).editorAnchor }
     private static func hourID(_ hour: Int) -> String { "hour-\(hour)" }
 }
 

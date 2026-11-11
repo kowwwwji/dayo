@@ -13,13 +13,19 @@ enum TimelineModeSetting {
         .day
         #endif
     }
+
+    /// 表示モードを切り替えて保存する。
+    @MainActor
+    static func set(_ mode: TimelineMode, on model: TimelineModel) {
+        UserDefaults.standard.set(mode.rawValue, forKey: key)
+        Task { await model.setMode(mode) }
+    }
 }
 
 /// 日 | 週 の切替（Mac のみ）と、前後・今日へ移るボタン。指でもマウスでも押しやすいよう枠付きで大きめにする。
 /// 「今日」は今日を含まない範囲を見ているときだけ ‹ › の左に現れる。‹ › は右端に固定して位置が変わらないようにする。
 struct DayNavigationControls: View {
     let model: TimelineModel
-    @AppStorage(TimelineModeSetting.key) private var storedMode = TimelineMode.day
 
     private var unit: String { model.mode == .week ? "週" : "日" }
 
@@ -28,10 +34,7 @@ struct DayNavigationControls: View {
             #if os(macOS)
             Picker("表示", selection: Binding(
                 get: { model.mode },
-                set: { mode in
-                    storedMode = mode
-                    Task { await model.setMode(mode) }
-                }
+                set: { TimelineModeSetting.set($0, on: model) }
             )) {
                 Text("日").tag(TimelineMode.day)
                 Text("週").tag(TimelineMode.week)

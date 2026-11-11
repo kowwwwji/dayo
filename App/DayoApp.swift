@@ -5,6 +5,7 @@ import SwiftUI
 struct DayoApp: App {
     @State private var model: TimelineModel
     @State private var quickInput: QuickInputModel
+    @State private var quickInputFocus = QuickInputFocus()
     private let source = EventKitRepository()
 
     init() {
@@ -52,10 +53,16 @@ struct DayoApp: App {
             RootView(
                 model: model,
                 quickInput: quickInput,
+                quickInputFocus: quickInputFocus,
                 makeEditor: makeEditor(for:),
                 makeNewEditor: makeNewEditor(start:isAllDay:)
             )
         }
+        #if os(macOS)
+        .commands {
+            TimelineCommands(model: model, quickInputFocus: quickInputFocus)
+        }
+        #endif
         #if os(macOS)
         Settings {
             SettingsView()

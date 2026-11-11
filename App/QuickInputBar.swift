@@ -4,16 +4,33 @@ import SwiftUI
 /// Shift+Tab は Tab に shift が付くのではなく、この制御文字（逆 Tab）として届く。
 private let backTab = KeyEquivalent("\u{19}")
 
+/// 入力欄へフォーカスを移す要求。メニューの ⌘N から入力欄へ伝える。
+@MainActor
+@Observable
+final class QuickInputFocus {
+    private(set) var requests = 0
+
+    func request() {
+        requests += 1
+    }
+}
+
 /// 1 行入力と解釈チップ。Return で登録する。Mac は上部、iPhone は下部に常設する。
 /// `trailing` は入力欄の右に並べる部品（Mac では日付の移動と表示切替）。
 struct QuickInputBar<Trailing: View>: View {
     let model: QuickInputModel
+    /// 外からフォーカスを当てる入口。iPhone には無い
+    var focus: QuickInputFocus?
     @ViewBuilder let trailing: Trailing
     @FocusState private var isFocused: Bool
     @AppStorage(EarlyReminderSetting.key) private var defaultEarlyReminder = EarlyReminderSetting.defaultMinutes
 
-    init(model: QuickInputModel, @ViewBuilder trailing: () -> Trailing = { EmptyView() }) {
+    init(
+        model: QuickInputModel, focus: QuickInputFocus? = nil,
+        @ViewBuilder trailing: () -> Trailing = { EmptyView() }
+    ) {
         self.model = model
+        self.focus = focus
         self.trailing = trailing()
     }
 
@@ -62,6 +79,7 @@ struct QuickInputBar<Trailing: View>: View {
         .background(.bar)
         .task { await model.loadDestinations() }
         .onAppear { model.defaultEarlyReminderMinutes = defaultEarlyReminder }
+        .onChange(of: focus?.requests) { isFocused = true }
         .onChange(of: defaultEarlyReminder) { _, new in model.defaultEarlyReminderMinutes = new }
         // 表示時は権限待ちで空だったり、純正アプリでリストが増えたりするので、印を打つたびに読み直す
         .onChange(of: model.hasTrailingMarker) { _, hasMarker in

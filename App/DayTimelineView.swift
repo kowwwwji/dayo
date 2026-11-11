@@ -43,6 +43,9 @@ struct DayTimelineView: View {
             }
             content
         }
+        #if os(macOS)
+        .onTimelineKey(isEnabled: model.access == .granted && editor == nil && pendingChange == nil, perform: handle)
+        #endif
         .task { await model.activate() }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -52,6 +55,31 @@ struct DayTimelineView: View {
             Task { await model.handleDayChanged() }
         }
     }
+
+    #if os(macOS)
+    /// キー操作。何もしなかったキーは false を返して元の行き先へ流す。
+    private func handle(_ key: TimelineKey) -> Bool {
+        switch key {
+        case .selectNext: model.selectNext()
+        case .selectPrevious: model.selectPrevious()
+        case .selectLeft: Task { await model.selectLeft() }
+        case .selectRight: Task { await model.selectRight() }
+        case .showToday: Task { await model.showToday() }
+        case .showPrevious: Task { await model.showPrevious() }
+        case .showNext: Task { await model.showNext() }
+        case .toggleCompleted:
+            guard model.selectedItem?.kind == .reminder else { return false }
+            Task { await model.toggleSelectedCompleted() }
+        case .openEditor:
+            guard let selection = model.selection, let item = model.selectedItem else { return false }
+            editing.open(item, at: selection.place.editorAnchor)
+        case .clearSelection:
+            guard model.selection != nil else { return false }
+            model.clearSelection()
+        }
+        return true
+    }
+    #endif
 
     #if os(iOS)
     private var header: some View {
@@ -219,7 +247,7 @@ struct DayTimelineView: View {
     }
 
     private func row(_ item: TimelineItem, isOverdue: Bool = false) -> some View {
-        TimelineRow(item: item, isOverdue: isOverdue, editing: editing, anchor: isOverdue ? "overdue" : nil) {
+        TimelineRow(item: item, isOverdue: isOverdue, editing: editing, anchor: isOverdue ? TimelineSelection.Place.overdue.editorAnchor : nil) {
             Task { await model.toggleCompleted(item) }
         }
     }
