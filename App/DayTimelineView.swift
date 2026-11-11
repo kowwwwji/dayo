@@ -81,6 +81,7 @@ struct DayTimelineView: View {
             guard let selection = model.selection, let item = model.selectedItem else { return false }
             editing.open(item, at: selection.place.editorAnchor)
         case .toggleHelp: showsKeyHelp.toggle()
+        case .toggleSidebar: SidebarSetting.toggle()
         case .clearSelection:
             // 一覧が出ていれば、まずそれを閉じる
             if showsKeyHelp {
