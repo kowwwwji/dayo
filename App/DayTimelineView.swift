@@ -422,12 +422,13 @@ private struct UndatedDropDelegate: DropDelegate {
         guard let drag, let item = drag.item, let target = target(at: info.location),
               let provider = info.itemProviders(for: [.plainText]).first
         else { return false }
-        drag.item = nil
+        let carried = drag.text
+        drag.end()
         // 掴んだまま落とさなかったリマインダーが残っていると、ほかのアプリから文字を落としたときにそれへ期日が付く。
         // 運ばれてきた中身が掴んだものと同じかを確かめる
-        let (id, title, model) = (item.id, item.title, model)
+        let (id, model) = (item.id, model)
         _ = provider.loadObject(ofClass: NSString.self) { text, _ in
-            guard let text = text as? NSString, text as String == title else { return }
+            guard let text = text as? NSString, text as String == carried else { return }
             Task { @MainActor in
                 guard let item = model.undated.first(where: { $0.id == id }) else { return }
                 switch target {

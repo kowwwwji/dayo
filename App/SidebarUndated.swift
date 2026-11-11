@@ -10,12 +10,26 @@ import SwiftUI
 @Observable
 final class UndatedDrag {
     /// 掴んでいるリマインダー。落とすか、次に掴むまで残る。
-    var item: TimelineItem?
+    private(set) var item: TimelineItem?
+    /// ドラッグで運んでいる文字列。落とされたものが、掴んだものと同じかを確かめるのに使う。
+    private(set) var text = ""
 
     /// ドラッグで運ぶ中身。タイトルの文字列なので、ほかのアプリへ落とせばタイトルが入る。
+    /// 読み取り専用のリストのものは期日を付けられないので、何も運ばない。
     func begin(_ item: TimelineItem) -> NSItemProvider {
+        guard item.isEditable else {
+            end()
+            return NSItemProvider()
+        }
         self.item = item
-        return NSItemProvider(object: item.title as NSString)
+        // 空の文字列は運べないので、タイトルの無いものは仮の名前にする
+        text = item.title.isEmpty ? "リマインダー" : item.title
+        return NSItemProvider(object: text as NSString)
+    }
+
+    func end() {
+        item = nil
+        text = ""
     }
 }
 
@@ -76,10 +90,7 @@ struct SidebarUndated: View {
             .contentShape(Rectangle())
             .onItemClick(select: {}) { editing.open(item, at: Self.anchor) }
             .itemEditor(for: item, editing, at: Self.anchor)
-            .onDrag {
-                // 読み取り専用のリストのものは期日を付けられない
-                item.isEditable ? drag.begin(item) : NSItemProvider()
-            }
+            .onDrag { drag.begin(item) }
         }
     }
 }
