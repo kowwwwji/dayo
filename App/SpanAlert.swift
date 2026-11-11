@@ -19,7 +19,19 @@ enum SpanAlert {
         let cancel = alert.addButton(withTitle: "キャンセル")
         cancel.keyEquivalent = "\u{1b}"
         alert.window.initialFirstResponder = thisOnly
+        // 標準では return は既定のボタンに効き、枠のあるボタンは space で押す。tab で枠を動かしたあとの return が
+        // 別のボタンに効くと取り違えるので、ダイアログが出ている間だけキーを見て、return を枠のあるボタンに効かせる
+        let sheet = alert.window
+        let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let isReturn = event.keyCode == 36 || event.keyCode == 76
+            let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+            guard isReturn, modifiers.isEmpty, event.window === sheet, let focused = sheet.firstResponder as? NSButton
+            else { return event }
+            focused.performClick(nil)
+            return nil
+        }
         alert.beginSheetModal(for: window) { response in
+            if let monitor { NSEvent.removeMonitor(monitor) }
             switch response {
             case .alertFirstButtonReturn: completion(.thisOccurrence)
             case .alertSecondButtonReturn: completion(.futureOccurrences)
