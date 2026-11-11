@@ -2,7 +2,8 @@ import DayoCore
 import SwiftUI
 
 /// 予定と Todo を 1 本の時間軸で見せる。日表示は 1 列、3 日表示は 3 列、週表示は 7 列。
-/// 上部に終日・期限切れ、中央に時刻付きのグリッド。期日なしのリマインダーは扱わない。
+/// 上部に終日・期限切れ、中央に時刻付きのグリッド。期日なしのリマインダーはここには出さず、
+/// サイドバーから落とされたものに期日を付けるだけ。
 struct DayTimelineView: View {
     let model: TimelineModel
     /// 項目から詳細編集のモデルを作る。保存先（CalendarSource）は App が握る
@@ -11,6 +12,10 @@ struct DayTimelineView: View {
     let makeNewEditor: @MainActor (Date, Bool) -> ItemEditorModel
     /// 日付ジャンプを開く入口（Mac の `g`）。ボタンは入力欄の行にある
     var dateJump: DateJumpRequest?
+    #if os(macOS)
+    /// サイドバーの「期日なし」からのドラッグ。落とされた日時を期日にする
+    var undatedDrag: UndatedDrag?
+    #endif
     @Environment(\.scenePhase) private var scenePhase
     @State private var editor: ItemEditorModel?
     @State private var editorAnchor: String?
@@ -228,6 +233,10 @@ struct DayTimelineView: View {
         }
         .overlay { DragGhostView(board: board) }
         .coordinateSpace(name: TimelineDragBoard.space)
+        #if os(macOS)
+        // 落とした位置は、このビューの座標（`TimelineDragBoard.space` と同じ）で届く
+        .onDrop(of: [.plainText], delegate: UndatedDropDelegate(drag: undatedDrag, board: board, model: model))
+        #endif
         .confirmationDialog(
             "繰り返しの予定です",
             isPresented: Binding(get: { pendingChange != nil }, set: { if !$0 { pendingChange = nil } }),
@@ -354,6 +363,85 @@ struct DayTimelineView: View {
         }
     }
 }
+
+#if os(macOS)
+/// サイドバーの「期日なし」から落とされたリマインダーを受ける。時間軸ならその日時、終日欄ならその日が期日になる。
+private struct UndatedDropDelegate: DropDelegate {
+    let drag: UndatedDrag?
+    let board: TimelineDragBoard
+    let model: TimelineModel
+
+    private enum Target: Sendable {
+        case timed(day: Date, minute: Int)
+        case allDay(day: Date)
+
+        var label: String {
+            switch self {
+            case .timed(_, let minute): timeText(minute: minute)
+            case .allDay: "終日"
+            }
+        }
+    }
+
+    private func target(at point: CGPoint) -> Target? {
+        if let day = board.allDayTarget(at: point) { return .allDay(day: day) }
+        // リマインダーには長さが無い
+        return board.gridTarget(at: point, duration: 1).map { .timed(day: $0.day, minute: $0.minute) }
+    }
+
+    /// 行き先の時刻を、タイムラインの中のドラッグと同じ影で見せる。
+    private func showGhost(_ info: DropInfo) -> Bool {
+        guard let item = drag?.item, let target = target(at: info.location) else {
+            board.ghost = nil
+            return false
+        }
+        board.ghost = TimelineDragBoard.Ghost(
+            title: item.title, color: item.color, label: target.label, location: info.location
+        )
+        return true
+    }
+
+    func validateDrop(info: DropInfo) -> Bool {
+        drag?.item != nil
+    }
+
+    func dropEntered(info: DropInfo) {
+        _ = showGhost(info)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: showGhost(info) ? .copy : .forbidden)
+    }
+
+    func dropExited(info: DropInfo) {
+        board.ghost = nil
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        board.ghost = nil
+        guard let drag, let item = drag.item, let target = target(at: info.location),
+              let provider = info.itemProviders(for: [.plainText]).first
+        else { return false }
+        drag.item = nil
+        // 掴んだまま落とさなかったリマインダーが残っていると、ほかのアプリから文字を落としたときにそれへ期日が付く。
+        // 運ばれてきた中身が掴んだものと同じかを確かめる
+        let (id, title, model) = (item.id, item.title, model)
+        _ = provider.loadObject(ofClass: NSString.self) { text, _ in
+            guard let text = text as? NSString, text as String == title else { return }
+            Task { @MainActor in
+                guard let item = model.undated.first(where: { $0.id == id }) else { return }
+                switch target {
+                case .timed(let day, let minute):
+                    await model.makeTimed(item, onDay: day, startMinute: minute, span: .thisOccurrence)
+                case .allDay(let day):
+                    await model.makeAllDay(item, onDay: day, span: .thisOccurrence)
+                }
+            }
+        }
+        return true
+    }
+}
+#endif
 
 /// グリッドの上に固定する小さなセクション。左にラベル、右に中身を置く（Apple カレンダーの「終日」行と同じ形）。
 /// ラベル幅はグリッドの時刻ラベルに合わせ、縦の線が揃うようにする。

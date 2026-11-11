@@ -13,6 +13,7 @@ struct RootView: View {
     @AppStorage(DayTitle.showsWeekNumberKey) private var showsWeekNumber = true
     #if os(macOS)
     @AppStorage(SidebarSetting.hiddenKey) private var sidebarHidden = false
+    @State private var undatedDrag = UndatedDrag()
     #endif
 
     private var title: String {
@@ -41,6 +42,10 @@ struct RootView: View {
                 Label("週表示", systemImage: "calendar").tag(TimelineMode.week)
                 // 見なくてよいカレンダーを隠して、列の幅を空ける
                 SidebarCalendars(model: model)
+                // 時間軸に載らない期日なしのリマインダー。ここからタイムラインへドラッグして期日を付ける
+                SidebarUndated(
+                    model: model, drag: undatedDrag, makeEditor: makeEditor, makeNewEditor: makeNewEditor
+                )
             }
             .navigationSplitViewColumnWidth(min: 160, ideal: 200)
         } detail: {
@@ -51,7 +56,8 @@ struct RootView: View {
                 }
                 Divider()
                 DayTimelineView(
-                    model: model, makeEditor: makeEditor, makeNewEditor: makeNewEditor, dateJump: dateJump
+                    model: model, makeEditor: makeEditor, makeNewEditor: makeNewEditor, dateJump: dateJump,
+                    undatedDrag: undatedDrag
                 )
             }
             .navigationTitle(title)
