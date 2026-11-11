@@ -10,6 +10,9 @@ struct RootView: View {
     let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
     let makeNewEditor: @MainActor (Date, Bool) -> ItemEditorModel
     @AppStorage(DayTitle.showsWeekNumberKey) private var showsWeekNumber = true
+    #if os(macOS)
+    @AppStorage(SidebarSetting.hiddenKey) private var sidebarHidden = false
+    #endif
 
     private var title: String {
         switch model.mode {
@@ -20,15 +23,25 @@ struct RootView: View {
 
     var body: some View {
         #if os(macOS)
-        NavigationSplitView {
-            // TODO: フェーズ4以降でリマインダーリストの一覧に置き換える
-            List {
-                Label("今日", systemImage: "sun.max")
+        NavigationSplitView(columnVisibility: Binding(
+            get: { sidebarHidden ? .detailOnly : .all },
+            set: { sidebarHidden = $0 == .detailOnly }
+        )) {
+            // 日表示と週表示をここで切り替える
+            // TODO: リマインダーリストの一覧を足す
+            List(selection: Binding<TimelineMode?>(
+                get: { model.mode },
+                set: { mode in
+                    if let mode { TimelineModeSetting.set(mode, on: model) }
+                }
+            )) {
+                Label("日表示", systemImage: "sun.max").tag(TimelineMode.day)
+                Label("週表示", systemImage: "calendar").tag(TimelineMode.week)
             }
             .navigationSplitViewColumnWidth(min: 160, ideal: 200)
         } detail: {
             VStack(spacing: 0) {
-                // 日 | 週 の切替と日付の移動は入力欄と同じ行の右端に置く。日付そのものはウィンドウタイトルに出す
+                // 日付の移動は入力欄と同じ行の右端に置く。日付そのものはウィンドウタイトルに出す
                 QuickInputBar(model: quickInput, focus: quickInputFocus) {
                     DayNavigationControls(model: model)
                 }

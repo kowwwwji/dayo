@@ -16,7 +16,7 @@ final class QuickInputFocus {
 }
 
 /// 1 行入力と解釈チップ。Return で登録する。Mac は上部、iPhone は下部に常設する。
-/// `trailing` は入力欄の右に並べる部品（Mac では日付の移動と表示切替）。
+/// `trailing` は入力欄の右に並べる部品（Mac では日付の移動）。
 struct QuickInputBar<Trailing: View>: View {
     let model: QuickInputModel
     /// 外からフォーカスを当てる入口。iPhone には無い

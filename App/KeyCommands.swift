@@ -174,6 +174,7 @@ struct KeyHelpView: View {
         ("t", "今日へ"),
         ("⌘N", "入力欄へ"),
         ("⌘1 / ⌘2", "日表示 / 週表示"),
+        ("⌃⌘S", "サイドバーを出す / 隠す"),
         ("⌘← / ⌘→", "前 / 次の日（週表示では週）"),
         ("?", "この一覧を出す / 閉じる"),
     ]
@@ -205,6 +206,16 @@ struct KeyHelpView: View {
     }
 }
 
+/// サイドバーを隠しているかの保存。メニューから切り替え、ウインドウは保存値を見て開閉する。
+enum SidebarSetting {
+    static let hiddenKey = "sidebarHidden"
+
+    static func toggle() {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: hiddenKey), forKey: hiddenKey)
+    }
+}
+
 /// メニューに出すキー操作。⌘N は既定の「新規ウインドウ」を置き換える。
 struct TimelineCommands: Commands {
     let model: TimelineModel
@@ -215,12 +226,16 @@ struct TimelineCommands: Commands {
             Button("クイック入力") { quickInputFocus.request() }
                 .keyboardShortcut("n")
         }
-        CommandGroup(before: .sidebar) {
-            Button("日") { TimelineModeSetting.set(.day, on: model) }
+        // 既定のサイドバーの項目は前面のウインドウにしか効かないので、保存値を切り替える自前の項目に置き換える。
+        // 同じ場所に「前に足す」と「置き換える」を別々に書くと前者が消えるので、1 つにまとめる
+        CommandGroup(replacing: .sidebar) {
+            Button("日表示") { TimelineModeSetting.set(.day, on: model) }
                 .keyboardShortcut("1")
-            Button("週") { TimelineModeSetting.set(.week, on: model) }
+            Button("週表示") { TimelineModeSetting.set(.week, on: model) }
                 .keyboardShortcut("2")
             Divider()
+            Button("サイドバーを表示 / 非表示") { SidebarSetting.toggle() }
+                .keyboardShortcut("s", modifiers: [.control, .command])
         }
     }
 }

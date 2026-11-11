@@ -22,7 +22,7 @@ enum TimelineModeSetting {
     }
 }
 
-/// 日 | 週 の切替（Mac のみ）と、前後・今日へ移るボタン。指でもマウスでも押しやすいよう枠付きで大きめにする。
+/// 前後・今日へ移るボタン。指でもマウスでも押しやすいよう枠付きで大きめにする。
 /// 「今日」は今日を含まない範囲を見ているときだけ ‹ › の左に現れる。‹ › は右端に固定して位置が変わらないようにする。
 struct DayNavigationControls: View {
     let model: TimelineModel
@@ -31,18 +31,6 @@ struct DayNavigationControls: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            #if os(macOS)
-            Picker("表示", selection: Binding(
-                get: { model.mode },
-                set: { TimelineModeSetting.set($0, on: model) }
-            )) {
-                Text("日").tag(TimelineMode.day)
-                Text("週").tag(TimelineMode.week)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            #endif
             if !model.containsToday {
                 Button("今日") { Task { await model.showToday() } }
             }
