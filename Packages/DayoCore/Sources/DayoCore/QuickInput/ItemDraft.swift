@@ -17,6 +17,8 @@ public struct ItemDraft: Equatable {
     public var notes: String?
     /// event のみ。
     public var location: String?
+    /// event のみ。
+    public var url: URL?
     /// reminder のみ。
     public var priority: ReminderPriority
     /// reminder のみ。期日の何分前に通知するか。nil なら無し。
@@ -33,6 +35,7 @@ public struct ItemDraft: Equatable {
         calendarID: String? = nil,
         notes: String? = nil,
         location: String? = nil,
+        url: URL? = nil,
         priority: ReminderPriority = .none,
         earlyReminderMinutes: Int? = nil
     ) {
@@ -46,6 +49,7 @@ public struct ItemDraft: Equatable {
         self.calendarID = calendarID
         self.notes = notes
         self.location = location
+        self.url = url
         self.priority = priority
         self.earlyReminderMinutes = earlyReminderMinutes
     }
@@ -80,6 +84,7 @@ extension ItemDraft {
             recurrence: item.recurrence,
             notes: item.notes,
             location: item.location,
+            url: item.url,
             priority: item.priority,
             // 時刻なしの期日は鳴る時刻が定まらないので付けない
             earlyReminderMinutes: isAllDay ? nil : item.earlyReminderMinutes

@@ -150,7 +150,7 @@ struct ItemEditorView: View {
                     .focused($titleFocused)
                     // 新規登録はタイトルを打って Enter で終わるようにする
                     .onSubmit { if model.isNew { trigger(.save) } }
-                // 場所・リンク・ビデオ会議は見るだけ。押すとブラウザで開く（直すのは純正カレンダーに任せる）
+                // 場所とビデオ会議は見るだけ。押すとブラウザで開く（直すのは純正カレンダーに任せる）
                 if let url = model.locationMapURL {
                     LabeledContent("場所") {
                         Link(destination: url) {
@@ -161,13 +161,17 @@ struct ItemEditorView: View {
                         .help("Google マップで開く")
                     }
                 }
-                // 行き先を隠さないよう、リンクはホスト名で出す
-                if let url = model.linkURL {
-                    LabeledContent("リンク") {
-                        Link(destination: url) {
-                            Label(url.host() ?? url.absoluteString, systemImage: "link")
+                // URL は空でも欄を出して書き込めるようにする。ブラウザで開けるものなら、隣のボタンで開く
+                if isEvent {
+                    HStack(spacing: 6) {
+                        TextField("URL", text: $model.urlText)
+                        if let url = model.linkURL {
+                            Link(destination: url) {
+                                Image(systemName: "safari")
+                            }
+                            .help("ブラウザで開く")
+                            .accessibilityLabel("ブラウザで開く")
                         }
-                        .help(url.absoluteString)
                     }
                 }
                 // Google カレンダーがメモに足すビデオ会議の案内は、メモ欄には出さずリンクにする

@@ -304,6 +304,26 @@ private func item(
         #expect((model.linkURL != nil) == offered)
     }
 
+    @Test func theURLOfAnEventIsEditedThroughTheDraft() {
+        var meeting = item(kind: .event, start: date(2026, 11, 12, 10), end: date(2026, 11, 12, 11))
+        meeting.url = URL(string: "https://example.com/a")
+        let model = ItemEditorModel(item: meeting, source: EditingSource(), calendar: tokyo)
+
+        #expect(model.urlText == "https://example.com/a")
+        #expect(model.draft.url == URL(string: "https://example.com/a"))
+
+        model.urlText = " https://example.com/b "
+        #expect(model.draft.url == URL(string: "https://example.com/b"))
+        #expect(model.validationMessage == nil)
+
+        model.urlText = ""
+        #expect(model.draft.url == nil)
+        #expect(model.validationMessage == nil)
+
+        model.urlText = "example.com"
+        #expect(model.validationMessage != nil)
+    }
+
     @Test func theConferenceBlockIsHiddenFromTheNotesAndKeptOnSave() {
         let line = "-::~:~::~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~::~:~::-"
         let block = "\(line)\nGoogle Meet に参加: https://meet.google.com/abc-defg-hij\n\(line)"

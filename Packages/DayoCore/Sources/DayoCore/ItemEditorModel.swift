@@ -40,9 +40,17 @@ public final class ItemEditorModel {
         components?.percentEncodedQuery = encoded
         return components?.url
     }
-    /// 項目に付いているリンク。ブラウザで開けるもの（http / https）だけを出す。
+    /// event のみ。URL の欄の文字。空なら URL 無し。
+    public var urlText: String
+    /// 入力中の URL。空や URL として読めない文字なら nil。
+    private var enteredURL: URL? {
+        let text = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let url = URL(string: text), url.scheme != nil else { return nil }
+        return url
+    }
+    /// 入力中の URL のうち、ブラウザで開けるもの（http / https）。それ以外は開くボタンを出さない。
     public var linkURL: URL? {
-        guard let url = item.url, let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+        guard let url = enteredURL, let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
               url.host() != nil else { return nil }
         return url
     }
@@ -105,6 +113,7 @@ public final class ItemEditorModel {
         self.source = source
         self.calendar = calendar
         title = item.title
+        urlText = item.url?.absoluteString ?? ""
         let conference = ConferenceNotes(item.notes ?? "")
         self.conference = conference
         notes = conference.body
@@ -250,6 +259,7 @@ public final class ItemEditorModel {
             calendarID: destinationID.isEmpty ? nil : destinationID,
             notes: conference.combined(withBody: notes),
             location: item.kind == .event ? item.location : nil,
+            url: item.kind == .event ? enteredURL : nil,
             priority: item.kind == .reminder ? priority : .none,
             // 時刻なしの期日は鳴る時刻が定まらないので付けない
             earlyReminderMinutes: item.kind == .reminder && usesDate && !isAllDay && earlyReminderMinutes > 0 ? earlyReminderMinutes : nil
@@ -268,6 +278,9 @@ public final class ItemEditorModel {
             if endValue < startValue {
                 return "終了は開始より前にはできません"
             }
+        }
+        if item.kind == .event, !urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, enteredURL == nil {
+            return "URL は https:// などから書いてください"
         }
         if item.kind == .reminder, !hasDate, recurrence != .none {
             return "繰り返しのあるリマインダーには期日が必要です"
