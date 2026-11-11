@@ -38,11 +38,4 @@ enum DockIcon {
     // 1024px の台紙を上から見て、余白 100 + 帯 200 + 残りの紙 624 の半分 = 612
     private static let bodyCenter: CGFloat = 1 - 612.0 / 1024
 }
-
-/// ウインドウに依らず、アプリが動いている間ずっと Dock の日付を保つ（ウインドウを全部閉じてもアプリは終了しない）。
-final class DockIconDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        DockIcon.start()
-    }
-}
 #endif

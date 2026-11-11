@@ -47,6 +47,9 @@ struct DayNavigationControls: View {
                 .transition(.opacity)
                 .accessibilityElement(children: .combine)
             }
+            if let deletion = model.pendingDeletion {
+                deletionNotice(deletion)
+            }
             if !model.isAlignedWithToday {
                 Button("今日") { Task { await model.showToday() } }
             }
@@ -63,6 +66,7 @@ struct DayNavigationControls: View {
         }
         .animation(.default, value: model.isAlignedWithToday)
         .animation(.default, value: showsRefreshing)
+        .animation(.default, value: model.pendingDeletion?.item.id)
         .onChange(of: model.isRefreshing) { _, refreshing in
             if refreshing {
                 showsRefreshing = true
@@ -75,6 +79,30 @@ struct DayNavigationControls: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.large)
+    }
+}
+
+extension DayNavigationControls {
+    /// 削除して保留にしている間の通知。実際に消すまでの間は取り消せることを知らせる。
+    private func deletionNotice(_ deletion: PendingDeletion) -> some View {
+        HStack(spacing: 8) {
+            Text("「\(deletion.item.title)」を削除しました")
+                .lineLimit(1)
+                .truncationMode(.middle)
+            #if os(macOS)
+            Text("⌘z で取り消し")
+            #else
+            // iPhone にはキーが無いので、ここから取り消す
+            Button("取り消す") { Task { await model.undo() } }
+                .controlSize(.small)
+            #endif
+        }
+        .font(.dayoSmall)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: 280, alignment: .trailing)
+        .padding(.trailing, 4)
+        .transition(.opacity)
+        .accessibilityElement(children: .combine)
     }
 }
 

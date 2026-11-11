@@ -21,6 +21,7 @@ enum TimelineKey {
     case moveToPreviousDay
     case moveToNextDay
     case deleteSelection
+    case undo
 
     /// キーを押し続けたときに繰り返すか。選択の移動だけ繰り返す。
     /// 完了の切替は保存が終わる前に次が来ると同じ状態を二重に書き込むので、繰り返さない。削除も 1 回押して 1 件だけ。
@@ -31,7 +32,7 @@ enum TimelineKey {
         }
     }
 
-    /// キー入力に当たる操作。修飾キーなしの単キー（矢印キーは h / j / k / l と同じ）と、⌘← / ⌘→。
+    /// キー入力に当たる操作。修飾キーなしの単キー（矢印キーは h / j / k / l と同じ）と、⌘← / ⌘→ / ⌘z。
     init?(_ event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
         // `?` は配列によって Shift が要るので、打たれた文字で判定する
@@ -43,7 +44,10 @@ enum TimelineKey {
             switch event.specialKey {
             case .leftArrow: self = .showPrevious
             case .rightArrow: self = .showNext
-            default: return nil
+            // メニューの「取り消す」は置き換えない。入力欄で文字を打っている間はここへ来ないので、文字の取り消しはそのまま
+            default:
+                guard event.charactersIgnoringModifiers?.lowercased() == "z" else { return nil }
+                self = .undo
             }
             return
         }
@@ -73,6 +77,7 @@ enum TimelineKey {
         case "h": self = .selectLeft
         case "l": self = .selectRight
         case "t": self = .showToday
+        case "u": self = .undo
         // delete（⌫）と前方削除（⌦）も d と同じ
         case "d", "\u{7f}", "\u{F728}": self = .deleteSelection
         case " ": self = .toggleCompleted
@@ -210,6 +215,7 @@ struct KeyHelpView: View {
             ("⇧j or ⇧↓ / ⇧k or ⇧↑", "15 分遅く / 早く"),
             ("⇧h or ⇧← / ⇧l or ⇧→", "前 / 次の日へ"),
             ("d or delete", "削除"),
+            ("u or ⌘z", "直前の移動・完了・削除を取り消す"),
         ]),
         Section(title: "表示", rows: [
             ("⌘← / ⌘→", "前 / 次の日（週表示では週）"),

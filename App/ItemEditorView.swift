@@ -123,7 +123,6 @@ struct ItemEditorView: View {
     @Bindable var model: ItemEditorModel
     @Environment(\.dismiss) private var dismiss
     @State private var pendingAction: PendingAction?
-    @State private var confirmsDelete = false
     @FocusState private var titleFocused: Bool
     @FocusState private var saveFocused: Bool
     @FocusState private var notesFocused: Bool
@@ -324,10 +323,6 @@ struct ItemEditorView: View {
             guard isEvent else { return }
             model.end = model.end.addingTimeInterval(new.timeIntervalSince(old))
         }
-        .confirmationDialog("「\(model.item.title)」を削除しますか？", isPresented: $confirmsDelete, titleVisibility: .visible) {
-            Button("削除", role: .destructive) { run(.delete, span: .thisOccurrence) }
-            Button("キャンセル", role: .cancel) {}
-        }
         #if os(macOS)
         .frame(width: 380, height: 480)
         #endif
@@ -392,12 +387,10 @@ struct ItemEditorView: View {
         model.isAllDay ? [.date] : [.date, .hourAndMinute]
     }
 
-    /// 繰り返しの予定なら範囲を聞く。削除はそれ以外でも必ず確認する（同期先からも消えるため）。
+    /// 繰り返しの予定なら範囲を聞く。削除の確認は出さない（すぐには消さず、取り消せる間を置くため）。
     private func trigger(_ action: PendingAction) {
         if model.needsSpanChoice {
             pendingAction = action
-        } else if action == .delete {
-            confirmsDelete = true
         } else {
             run(action, span: .thisOccurrence)
         }
