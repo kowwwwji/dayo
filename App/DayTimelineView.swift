@@ -54,8 +54,11 @@ struct DayTimelineView: View {
                 KeyHelpView { showsKeyHelp = false }
             }
         }
-        .onTimelineKey(isEnabled: model.access == .granted && editor == nil && pendingChange == nil,
-            perform: handle)
+        .onTimelineKey(
+            isEnabled: model.access == .granted && editor == nil && pendingChange == nil
+                && dateJump?.isPresented != true,
+            perform: handle
+        )
         #endif
         .environment(\.selectTimelineItem) { model.select($0) }
         .task { await model.activate() }
@@ -98,7 +101,7 @@ struct DayTimelineView: View {
         case .undo: Task { await model.undo() }
         case .jumpToDate:
             guard let dateJump else { return false }
-            dateJump.request()
+            dateJump.isPresented = true
         case .clearSelection:
             // 一覧が出ていれば、まずそれを閉じる
             if showsKeyHelp {

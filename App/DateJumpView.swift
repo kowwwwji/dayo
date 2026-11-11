@@ -2,15 +2,12 @@ import DayoCore
 import Observation
 import SwiftUI
 
-/// 日付ジャンプを開く要求。キー操作（`g`）から、ボタンのある場所へ伝える。
+/// 日付ジャンプを開いているか。キー操作（`g`）とボタンの両方から開くので、置き場所を 1 つにする。
+/// 開いている間はタイムラインのキー操作を止める（ポップオーバーが前面を取れなかったとき、打った文字が項目の操作にならないように）。
 @MainActor
 @Observable
 final class DateJumpRequest {
-    private(set) var requests = 0
-
-    func request() {
-        requests += 1
-    }
+    var isPresented = false
 }
 
 /// 離れた日へ移るための小さな画面。日付を打って Return するか、月のカレンダーから日を選ぶ。
