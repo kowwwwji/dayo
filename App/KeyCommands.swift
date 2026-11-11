@@ -30,7 +30,7 @@ enum TimelineKey {
         }
     }
 
-    /// キー入力に当たる操作。修飾キーなしの単キーと、⌘← / ⌘→。
+    /// キー入力に当たる操作。修飾キーなしの単キー（↑ / ↓ は k / j と同じ）と、⌘← / ⌘→。
     init?(_ event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
         // `?` は配列によって Shift が要るので、打たれた文字で判定する
@@ -47,7 +47,12 @@ enum TimelineKey {
             return
         }
         // Shift を押すと大文字で届くので、小文字に揃えて比べる（Caps Lock でも同じキーとして扱う）
-        let character = event.charactersIgnoringModifiers?.lowercased()
+        // ↑ / ↓ は k / j として扱う（Shift 付きも同じ）
+        let character: String? = switch event.specialKey {
+        case .upArrow: "k"
+        case .downArrow: "j"
+        default: event.charactersIgnoringModifiers?.lowercased()
+        }
         if modifiers == .shift {
             switch character {
             case "j": self = .moveLater
@@ -189,14 +194,14 @@ struct KeyHelpView: View {
 
     private static let sections = [
         Section(title: "選ぶ", rows: [
-            ("j / k", "下 / 上の項目を選ぶ"),
+            ("j / k（↓ / ↑）", "下 / 上の項目を選ぶ"),
             ("h / l", "3日・週: 隣の日の列へ　日: 前 / 次の日へ"),
             ("esc", "選択を解除（入力欄では入力欄を抜ける）"),
         ]),
         Section(title: "選択中の項目", rows: [
             ("return", "編集を開く"),
             ("space", "リマインダーを完了 / 未完了"),
-            ("⇧j / ⇧k", "15 分遅く / 早く"),
+            ("⇧j / ⇧k（⇧↓ / ⇧↑）", "15 分遅く / 早く"),
             ("⇧h / ⇧l", "前 / 次の日へ"),
         ]),
         Section(title: "表示", rows: [
