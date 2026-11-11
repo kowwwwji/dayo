@@ -149,10 +149,10 @@ struct DayTimelineView: View {
         VStack(spacing: 0) {
             // 期限切れを上、終日を時間軸のすぐ上に置く。終日欄は時間軸とドラッグで行き来するので隣り合わせにする
             if !model.timeline.overdue.isEmpty {
-                // 1 行およそ 40pt。多くても 3 行半で止めて残りはスクロール
+                // 1 行およそ 30pt。多くても 3 行半で止めて残りはスクロール
                 PinnedSection(
                     title: "期限切れ",
-                    scrollHeight: min(CGFloat(model.timeline.overdue.count) * 40, 140),
+                    scrollHeight: min(CGFloat(model.timeline.overdue.count) * 30, 105),
                     scrollTarget: model.selection?.place == .overdue ? model.selection?.itemID : nil
                 ) {
                     ForEach(model.timeline.overdue) { item in

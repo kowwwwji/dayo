@@ -1,7 +1,8 @@
 import DayoCore
 import SwiftUI
 
-/// タイムラインの 1 行。予定はカレンダー色のバー、リマインダーは完了チェック。
+/// 期限切れ欄の 1 行。予定はカレンダー色のバー、リマインダーは完了チェック。
+/// 日時とリスト名はタイトルの横に並べる。幅が足りなければタイトルのほうを省略する。
 struct TimelineRow: View {
     let item: TimelineItem
     var isOverdue = false
@@ -15,14 +16,13 @@ struct TimelineRow: View {
     var body: some View {
         HStack(spacing: 10) {
             leading
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    PriorityMark(priority: item.priority)
-                    Text(item.title)
-                        .strikethrough(item.isCompleted)
-                        .foregroundStyle(item.isCompleted ? .secondary : .primary)
-                    EarlyReminderMark(minutes: item.earlyReminderMinutes)
-                }
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                PriorityMark(priority: item.priority)
+                Text(item.title)
+                    .strikethrough(item.isCompleted)
+                    .foregroundStyle(item.isCompleted ? .secondary : .primary)
+                    .lineLimit(1)
+                EarlyReminderMark(minutes: item.earlyReminderMinutes)
                 HStack(spacing: 6) {
                     if let time = timeText {
                         Text(time).foregroundStyle(isOverdue ? .red : .secondary)
@@ -30,6 +30,9 @@ struct TimelineRow: View {
                     Text(item.sourceName).foregroundStyle(.tertiary)
                 }
                 .font(.dayoSmall)
+                .lineLimit(1)
+                .padding(.leading, 4)
+                .layoutPriority(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -46,7 +49,7 @@ struct TimelineRow: View {
         case .event:
             RoundedRectangle(cornerRadius: 2)
                 .fill(Color(cgColor: item.color))
-                .frame(width: 4, height: 30)
+                .frame(width: 4, height: 18)
         case .reminder:
             Button(action: onToggle) {
                 Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
