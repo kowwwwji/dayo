@@ -81,9 +81,14 @@ public final class TimelineModel {
     /// キー操作で選択中の項目。画面から消えたら外れる。
     public var selection: TimelineSelection? { cursorPosition?.selection }
     private var cursorPosition: TimelineCursor.Position?
+    /// ユーザーが選択を動かした。登録した項目を後から選ぶ待ちは、選び直した選択を奪わないよう忘れる。
+    private func userMovedSelection(to position: TimelineCursor.Position?) {
+        createdToSelect = nil
+        cursorPosition = position
+    }
     /// キー操作での移動を保存している間。保存前の内容を元に次の移動を重ねないよう、その間の移動は受けない。
     private var isMovingSelection = false
-    /// 登録した項目で、まだ画面に出ていないもの。次に読み込みが終わったとき選ぶ（見つからなくても忘れる）。
+    /// 登録した項目で、まだ画面に出ていないもの。次に読み込みが終わったとき選ぶ（見つからなくても、読み込みに失敗しても忘れる）。
     private var createdToSelect: (title: String, start: Date)?
 
     /// 取り消せる操作。新しいものが末尾。
@@ -266,6 +271,7 @@ public final class TimelineModel {
             errorMessage = nil
         } catch {
             guard generation == loadGeneration else { return }
+            createdToSelect = nil
             errorMessage = error.localizedDescription
         }
     }
@@ -472,12 +478,12 @@ public final class TimelineModel {
 
     /// 選択を下の項目へ。何も選択していなければ、今日（見えていなければ最初の日）の列の先頭を選ぶ。
     public func selectNext() {
-        cursorPosition = movedVertically(by: 1)
+        userMovedSelection(to: movedVertically(by: 1))
     }
 
     /// 選択を上の項目へ。何も選択していなければ、今日（見えていなければ最初の日）の列の末尾を選ぶ。
     public func selectPrevious() {
-        cursorPosition = movedVertically(by: -1)
+        userMovedSelection(to: movedVertically(by: -1))
     }
 
     /// 列が複数なら左隣の、項目のある日の列へ。無ければ前の週へ移る（3 日表示は 1 日ずれる）。日表示では前の日へ。
@@ -499,11 +505,11 @@ public final class TimelineModel {
             cursorPosition?.day ?? (containsToday ? calendar.startOfDay(for: now()) : days.first)
         }
         guard let day, let position = cursor.resolve(.init(selection: selection, day: day)) else { return }
-        cursorPosition = position
+        userMovedSelection(to: position)
     }
 
     public func clearSelection() {
-        cursorPosition = nil
+        userMovedSelection(to: nil)
     }
 
     /// 選択の後ろ（`after`）か前に新規登録するときの位置。
@@ -756,6 +762,7 @@ public final class TimelineModel {
     }
 
     private func selectSideways(by step: Int) async {
+        createdToSelect = nil
         guard mode != .day else {
             await showAdjacent(by: step)
             return

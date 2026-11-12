@@ -156,8 +156,9 @@ struct DayGridView: View {
             .onChange(of: selection) { _, _ in
                 if selectedPlacement != nil { proxy.scrollTo(Self.selectionID) }
             }
-            // キーで開いた新規登録が畳んだ帯に掛かれば開き、画面の外ならそこまで動かす
-            .onChange(of: newItem.slot) { _, slot in
+            // キーで開いた新規登録が畳んだ帯に掛かれば開き、画面の外ならそこまで動かす。
+            // 位置だけを見ると、閉じて同じ位置で開き直したときに動かないので、開いているかと合わせて見る
+            .onChange(of: openNewSlot) { _, slot in
                 guard let minute = slot?.startMinute else { return }
                 for range in axis.collapsed where minute < range.upperBound && minute + 60 > range.lowerBound {
                     expanded.insert(range.lowerBound == 0 ? .early : .late)
@@ -369,6 +370,11 @@ struct DayGridView: View {
     }
 
     private static let newItemID = "new-item"
+
+    /// 時間軸で開いている新規登録の位置。閉じていれば nil。
+    private var openNewSlot: NewItemSlot? {
+        editing.isOpenForNew(at: Self.newItemAnchor) ? newItem.slot : nil
+    }
 
     /// 新規登録の仮の項目へスクロールするときの行き先。仮の項目も `offset` で置いているので、同じ位置に目印を置く。
     @ViewBuilder

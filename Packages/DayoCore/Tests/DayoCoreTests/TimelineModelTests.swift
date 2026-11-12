@@ -3261,3 +3261,36 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(model.selection == TimelineSelection(itemID: "a", place: .grid(day: day(10))))
     }
 }
+
+extension NewItemSlotTests {
+    @Test func aSelectionMadeWhileWaitingIsNotTakenByTheCreatedItem() async {
+        let (model, source) = await loaded([event("a", "2026-11-10T09:00:00Z", "2026-11-10T10:00:00Z")])
+        let created = event("new", "2026-11-11T13:00:00Z", "2026-11-11T14:00:00Z")
+
+        // まだ画面に無いので、次の読み込みを待つ
+        model.selectCreated(title: "new", start: iso("2026-11-11T13:00:00Z"))
+        model.select(TimelineSelection(itemID: "a", place: .grid(day: day(10))))
+        source.snapshots[weekStart] = TimelineSnapshot(
+            items: [event("a", "2026-11-10T09:00:00Z", "2026-11-10T10:00:00Z"), created], overdue: []
+        )
+        await model.load()
+
+        #expect(model.selection == TimelineSelection(itemID: "a", place: .grid(day: day(10))))
+    }
+
+    @Test func aContinuationFromThePreviousDayUsesItsDrawnPart() async {
+        // 前日 22:00〜当日 2:00。当日の列は 0:00〜2:00
+        let (model, _) = await loaded([event("night", "2026-11-09T22:00:00Z", "2026-11-10T02:00:00Z")])
+        model.select(TimelineSelection(itemID: "night", place: .grid(day: day(10))))
+
+        #expect(model.newItemSlot(after: true, dayStartHour: 7) == slot(10, 2 * 60))
+        #expect(model.newItemSlot(after: false, dayStartHour: 7) == slot(10, 0))
+    }
+
+    @Test func beforeAReminderEndsAtItsTime() async {
+        let (model, _) = await loaded([item("r", start: iso("2026-11-10T09:00:00Z"))])
+        model.select(TimelineSelection(itemID: "r", place: .grid(day: day(10))))
+
+        #expect(model.newItemSlot(after: false, dayStartHour: 7) == slot(10, 8 * 60))
+    }
+}
