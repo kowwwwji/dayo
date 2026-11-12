@@ -29,7 +29,7 @@ public final class ItemEditorModel {
     /// メモ。Google カレンダーが足すビデオ会議の案内は除いてある（`conferenceURL` として出す）。
     public var notes: String
     /// event のみ。場所。ここでは直さず、地図を開くためだけに出す（保存時は元のまま）。
-    public var location: String { item.location?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
+    public var location: String { ItemSummary.trimmedLocation(item.location) }
     /// 場所の最初の「,」より前（多くは施設の名前）。「,」が無い、または前後どちらかが空なら場所の全体。
     public var locationName: String { locationParts.name }
     /// 場所の最初の「,」より後ろ（多くは住所）。分けられなければ空。
@@ -42,15 +42,7 @@ public final class ItemEditorModel {
         return (name, detail)
     }
     /// 場所を Google マップで検索する URL。場所が空なら nil。
-    public var locationMapURL: URL? {
-        guard !location.isEmpty else { return nil }
-        var components = URLComponents(string: "https://www.google.com/maps/search/")
-        components?.queryItems = [URLQueryItem(name: "api", value: "1"), URLQueryItem(name: "query", value: location)]
-        // URLComponents は値の中の「+」をそのまま残す。受け側では空白と読まれるので、自分でエスケープする
-        let encoded = components?.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
-        components?.percentEncodedQuery = encoded
-        return components?.url
-    }
+    public var locationMapURL: URL? { ItemSummary.mapURL(forLocation: location) }
     /// event のみ。URL の欄の文字。空なら URL 無し。
     public var urlText: String
     /// 入力中の URL。空や URL として読めない文字なら nil。
@@ -60,11 +52,7 @@ public final class ItemEditorModel {
         return url
     }
     /// 入力中の URL のうち、ブラウザで開けるもの（http / https）。それ以外は開くボタンを出さない。
-    public var linkURL: URL? {
-        guard let url = enteredURL, let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
-              url.host() != nil else { return nil }
-        return url
-    }
+    public var linkURL: URL? { ItemSummary.webURL(enteredURL) }
     /// メモに入っていたビデオ会議の参加用リンク。無ければ nil。
     public var conferenceURL: URL? { conference.url }
     private var conference: ConferenceNotes
@@ -216,27 +204,12 @@ public final class ItemEditorModel {
     static func option(for item: TimelineItem, calendar: Calendar) -> RecurrenceOption {
         guard item.hasRecurrence else { return .none }
         guard let spec = item.recurrence, let start = item.start else { return .unsupported }
-        let normalized = normalize(spec, start: start, calendar: calendar)
+        let normalized = spec.normalized(from: start, calendar: calendar)
         for option in [RecurrenceOption.daily, .weekdays, .weekly, .biweekly, .monthly]
-        where preset(option, start: start, original: nil, calendar: calendar).map({ normalize($0, start: start, calendar: calendar) }) == normalized {
+        where preset(option, start: start, original: nil, calendar: calendar)?.normalized(from: start, calendar: calendar) == normalized {
             return option
         }
         return .custom
-    }
-
-    /// 比較用に曜日・日の省略を補い、曜日の順序を揃える。
-    private static func normalize(_ spec: RecurrenceSpec, start: Date, calendar: Calendar) -> RecurrenceSpec {
-        var result = spec
-        switch spec.frequency {
-        case .weekly where spec.weekdays.isEmpty:
-            result.weekdays = [calendar.component(.weekday, from: start)]
-        case .monthly where spec.daysOfMonth.isEmpty && spec.weekOfMonth == nil:
-            result.daysOfMonth = [calendar.component(.day, from: start)]
-        default:
-            break
-        }
-        result.weekdays.sort()
-        return result
     }
 
     /// 選択肢と開始日が元のままなら元の規則をそのまま返す。Repository 側で「変更なし」と判定され、作り直しを避けられる。
