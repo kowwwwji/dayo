@@ -17,6 +17,7 @@ final class ItemCards {
 
     func show(_ target: ItemCardTarget) {
         self.target = target
+        dismissal = nil
     }
 
     func close() {

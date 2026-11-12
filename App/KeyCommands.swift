@@ -148,14 +148,12 @@ private struct KeyCatcher: NSViewRepresentable {
                 }
                 if self.leavesTextField(event) { return nil }
                 guard self.accepts(event) else { return event }
-                guard let key = TimelineKey(event) else {
-                    // カードに届いた割り当ての無いキーは黙って捨てる（流すと警告音が鳴る）。⌘ 付きはメニューへ流す
-                    let isForCard = event.window !== self.window && !event.modifierFlags.contains(.command)
-                    return isForCard ? nil : event
-                }
+                // カードに届いたキーは、何もしなかったものも黙って捨てる（流すと警告音が鳴る）。⌘ 付きはメニューへ流す
+                let unhandled = event.window !== self.window && !event.modifierFlags.contains(.command) ? nil : event
+                guard let key = TimelineKey(event) else { return unhandled }
                 // 押しっぱなしの繰り返しは、繰り返さない操作では捨てる
                 if event.isARepeat, !key.repeats { return nil }
-                return self.action?(key) == true ? nil : event
+                return self.action?(key) == true ? nil : unhandled
             }
             // 起動時はキー操作を受けられる状態から始める（入力欄へは ⌘N）
             DispatchQueue.main.async { [weak self] in
