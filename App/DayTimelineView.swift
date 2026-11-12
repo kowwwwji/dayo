@@ -30,9 +30,25 @@ struct DayTimelineView: View {
     @State private var showsSettings = false
     /// キー操作の一覧を出しているか（Mac のみ）
     @State private var showsKeyHelp = false
+    /// 項目の情報カード（Mac のみ。クリックか space で出す）
+    @State private var cards = ItemCards()
 
     private var editing: ItemEditing {
-        ItemEditing(editor: $editor, anchor: $editorAnchor, make: makeEditor, makeNew: makeNewEditor)
+        var editing = ItemEditing(editor: $editor, anchor: $editorAnchor, make: makeEditor, makeNew: makeNewEditor)
+        #if os(macOS)
+        editing.card = ItemCardContext(
+            cards: cards,
+            onToggle: { item in Task { await model.toggleCompleted(item) } },
+            onDelete: deleteFromCard
+        )
+        #endif
+        return editing
+    }
+
+    /// 選択中の項目のカードの行き先。選択が無い、または選択中の項目がもう画面に無ければ nil。
+    private var selectedCardTarget: ItemCardTarget? {
+        guard let selection = model.selection, model.selectedItem != nil else { return nil }
+        return ItemCardTarget(itemID: selection.itemID, anchor: selection.place.editorAnchor)
     }
 
     var body: some View {
@@ -64,6 +80,14 @@ struct DayTimelineView: View {
                 && dateJump?.isPresented != true,
             perform: handle
         )
+        // カードが出ている間は、選択に付いていく（Finder のクイックルックと同じ）。選択が消えたら閉じる
+        .onChange(of: selectedCardTarget) { _, target in
+            guard cards.target != nil else { return }
+            if let target { cards.show(target) } else { cards.close() }
+        }
+        .onChange(of: dateJump?.isPresented) { _, isPresented in
+            if isPresented == true { cards.close() }
+        }
         #endif
         .environment(\.selectTimelineItem) { model.select($0) }
         .task { await model.activate() }
@@ -89,7 +113,24 @@ struct DayTimelineView: View {
         case .toggleCompleted:
             guard model.selectedItem?.kind == .reminder else { return false }
             Task { await model.toggleSelectedCompleted() }
+        case .toggleCard:
+            if cards.target != nil {
+                cards.close()
+            } else if let target = selectedCardTarget {
+                cards.show(target)
+            } else {
+                return false
+            }
+        case .nextLink, .previousLink:
+            // カードが出ていなければ流す（入力欄などの tab の移動を奪わない）
+            guard cards.target != nil, let item = model.selectedItem else { return false }
+            return cards.moveLinkFocus(in: ItemSummary(item).links, by: key == .nextLink ? 1 : -1)
         case .openEditor:
+            // カードでリンクを選んでいれば、編集ではなくそのリンクを開く
+            if cards.target != nil, let link = cards.focusedLink {
+                NSWorkspace.shared.open(link)
+                return true
+            }
             guard let selection = model.selection, let item = model.selectedItem else { return false }
             editing.open(item, at: selection.place.editorAnchor)
         case .toggleHelp: showsKeyHelp.toggle()
@@ -107,6 +148,11 @@ struct DayTimelineView: View {
             // 一覧が出ていれば、まずそれを閉じる
             if showsKeyHelp {
                 showsKeyHelp = false
+                return true
+            }
+            // カードが出ていれば、選択は残してカードだけ閉じる
+            if cards.target != nil {
+                cards.close()
                 return true
             }
             guard model.selection != nil else { return false }
@@ -137,6 +183,14 @@ struct DayTimelineView: View {
         } else {
             Task { await model.deleteSelection(span: .thisOccurrence) }
         }
+    }
+
+    /// カードのごみ箱。カードを閉じてから消す（消したあとの選択へカードが移らないように）。
+    private func deleteFromCard(_ item: TimelineItem) {
+        cards.close()
+        // カードの項目は選択中の項目。食い違っていたら（同期で消えた等）何もしない
+        guard model.selectedItem?.id == item.id, item.isEditable else { return }
+        delete(item)
     }
 
     /// 範囲を聞いている間に選択が変わっていたら（同期で消えた等）、何もしない。

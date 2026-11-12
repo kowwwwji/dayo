@@ -11,16 +11,20 @@ struct ItemEditing {
     let make: @MainActor (TimelineItem) -> ItemEditorModel
     /// 新規登録のモデルを作る。引数は開始日時と、終日として開くか
     let makeNew: @MainActor (Date, Bool) -> ItemEditorModel
+    /// 情報カード（Mac）。カードを出さない画面では nil。エディタとカードは同時に出さない
+    var card: ItemCardContext?
 
     func open(_ item: TimelineItem, at anchor: String? = nil) {
         // 繰り返しリマインダーの将来回は実体が無いので開かない
         guard !item.isVirtual else { return }
+        card?.cards.close()
         self.anchor = anchor
         editor = make(item)
     }
 
     /// 新規登録を開く。`anchor` は登録先を示す仮の項目を置いた場所。
     func openNew(at start: Date, isAllDay: Bool, anchor: String) {
+        card?.cards.close()
         self.anchor = anchor
         editor = makeNew(start, isAllDay)
     }
@@ -36,6 +40,26 @@ struct ItemEditing {
         Binding(
             get: { isOpenForNew(at: anchor) },
             set: { if !$0, isOpenForNew(at: anchor) { editor = nil } }
+        )
+    }
+
+    /// その項目のクリックでカードを出す / 閉じる操作。カードを出さない画面と、実体の無い将来回では nil。
+    func cardClick(for item: TimelineItem, at anchor: String? = nil) -> ItemCardClick? {
+        guard let cards = card?.cards, !item.isVirtual else { return nil }
+        let target = ItemCardTarget(itemID: item.id, anchor: anchor)
+        return ItemCardClick(
+            isShowing: { cards.isShowingOrJustClosed(target) },
+            open: { cards.show(target) },
+            close: { cards.close() }
+        )
+    }
+
+    func isCardPresented(for item: TimelineItem, at anchor: String? = nil) -> Binding<Bool> {
+        let target = ItemCardTarget(itemID: item.id, anchor: anchor)
+        let cards = card?.cards
+        return Binding(
+            get: { cards?.target == target },
+            set: { if !$0 { cards?.popoverClosed(target) } }
         )
     }
 
@@ -106,6 +130,17 @@ private struct ItemEditorPresenter: ViewModifier {
         content.popover(isPresented: editing.isPresented(for: item, at: anchor), arrowEdge: .trailing) {
             if let editor = editing.editor {
                 ItemEditorView(model: editor)
+            }
+        }
+        .popover(isPresented: editing.isCardPresented(for: item, at: anchor), arrowEdge: .trailing) {
+            if let card = editing.card {
+                ItemCardView(
+                    item: item,
+                    focusedLink: card.cards.focusedLink,
+                    onEdit: { editing.open(item, at: anchor) },
+                    onToggle: { card.onToggle(item) },
+                    onDelete: { card.onDelete(item) }
+                )
             }
         }
         #else

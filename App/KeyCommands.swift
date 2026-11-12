@@ -10,6 +10,11 @@ enum TimelineKey {
     case selectLeft
     case selectRight
     case toggleCompleted
+    /// 選択中の項目の情報カードを出す / 閉じる
+    case toggleCard
+    /// 情報カードの次 / 前のリンクを選ぶ（tab / shift+tab）
+    case nextLink
+    case previousLink
     case openEditor
     case clearSelection
     case showPrevious
@@ -61,6 +66,11 @@ enum TimelineKey {
         case .rightArrow: "l"
         default: event.charactersIgnoringModifiers?.lowercased()
         }
+        // shift+tab は配列によって back tab の文字で届く
+        if event.specialKey == .backTab || (event.specialKey == .tab && modifiers == .shift) {
+            self = .previousLink
+            return
+        }
         if modifiers == .shift {
             switch character {
             case "j": self = .moveLater
@@ -88,7 +98,9 @@ enum TimelineKey {
         case "u": self = .undo
         // delete（⌫）と前方削除（⌦）も d と同じ
         case "d", "\u{7f}", "\u{F728}": self = .deleteSelection
-        case " ": self = .toggleCompleted
+        case " ": self = .toggleCard
+        case "x": self = .toggleCompleted
+        case "\t": self = .nextLink
         case "\r", "\u{3}": self = .openEditor
         case "\u{1b}": self = .clearSelection
         default: return nil
@@ -98,7 +110,7 @@ enum TimelineKey {
 
 extension View {
     /// このビューのあるウインドウでのキー操作を受ける。`action` は処理したら true を返す（false ならキーは元の行き先へ流れる）。
-    /// 文字入力中と、シートやポップオーバーが出ている間は呼ばれない。
+    /// 文字入力中と、シートや編集のポップオーバーが出ている間は呼ばれない。情報カードが出ている間は呼ばれる。
     func onTimelineKey(isEnabled: Bool, perform action: @escaping (TimelineKey) -> Bool) -> some View {
         background(KeyCatcher(isEnabled: isEnabled, action: action))
     }
@@ -144,10 +156,13 @@ private struct KeyCatcher: NSViewRepresentable {
                     return event
                 }
                 if self.leavesTextField(event) { return nil }
-                guard self.accepts(event), let key = TimelineKey(event) else { return event }
+                guard self.accepts(event) else { return event }
+                // カードに届いたキーは、何もしなかったものも黙って捨てる（流すと警告音が鳴る）。⌘ 付きはメニューへ流す
+                let unhandled = event.window !== self.window && !event.modifierFlags.contains(.command) ? nil : event
+                guard let key = TimelineKey(event) else { return unhandled }
                 // 押しっぱなしの繰り返しは、繰り返さない操作では捨てる
                 if event.isARepeat, !key.repeats { return nil }
-                return self.action?(key) == true ? nil : event
+                return self.action?(key) == true ? nil : unhandled
             }
             // 起動時はキー操作を受けられる状態から始める（入力欄へは ⌘N）
             DispatchQueue.main.async { [weak self] in
@@ -189,13 +204,15 @@ private struct KeyCatcher: NSViewRepresentable {
             monitor = nil
         }
 
-        /// このウインドウ宛てのキー入力で、文字入力中でないか。
-        /// ポップオーバーや設定は別のウインドウなので、そこでのキー入力は `event.window` の比較で外れる。
+        /// このウインドウか情報カード宛てのキー入力で、文字入力中でないか。
+        /// 編集のポップオーバーや設定は別のウインドウなので、そこでのキー入力は `event.window` の比較で外れる。
+        /// 情報カードもポップオーバーだが、入力欄が無く、出ている間もタイムラインのキーを効かせるので受ける。
         private func accepts(_ event: NSEvent) -> Bool {
-            guard isEnabled, let window, event.window === window, window.attachedSheet == nil
+            guard isEnabled, let window, window.attachedSheet == nil, let target = event.window,
+                  target === window || target === ItemCardWindow.current
             else { return false }
             // 入力欄を編集している間、ウインドウの first responder は NSText（フィールドエディタ）になる
-            return !(window.firstResponder is NSText)
+            return !(target.firstResponder is NSText)
         }
     }
 }
@@ -214,11 +231,13 @@ struct KeyHelpView: View {
         Section(title: "選ぶ", rows: [
             ("j or ↓ / k or ↑", "下 / 上の項目を選ぶ"),
             ("h or ← / l or →", "3日・週: 隣の日の列へ　日: 前 / 次の日へ"),
-            ("esc", "選択を解除"),
+            ("esc", "情報カードを閉じる / 選択を解除"),
         ]),
         Section(title: "選択中の項目", rows: [
-            ("return", "編集を開く"),
-            ("space", "リマインダーを完了 / 未完了"),
+            ("return", "編集を開く（カードでリンクを選んでいれば、それを開く）"),
+            ("space", "情報カードを出す / 閉じる"),
+            ("tab / ⇧tab", "カードの場所・URL・ビデオ会議を選ぶ"),
+            ("x", "リマインダーを完了 / 未完了"),
             ("⇧j or ⇧↓ / ⇧k or ⇧↑", "15 分遅く / 早く"),
             ("⇧h or ⇧← / ⇧l or ⇧→", "前 / 次の日へ"),
             ("⌥j or ⌥↓ / ⌥k or ⌥↑", "予定を 15 分長く / 短く"),

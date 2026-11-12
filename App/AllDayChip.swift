@@ -80,7 +80,10 @@ struct AllDayChip: View {
         .coordinateSpace(name: Self.space)
         .selectionRing(isSelected)
         .contentShape(Rectangle())
-        .onItemClick(select: onSelect) { editing.open(item, at: Self.anchor) }
+        .onItemClick(
+            select: onSelect, card: editing.cardClick(for: item, at: Self.anchor),
+            cardInset: item.kind == .reminder ? checkCircleWidth : 0
+        ) { editing.open(item, at: Self.anchor) }
         .itemEditor(for: item, editing, at: Self.anchor)
         .opacity(item.isVirtual ? 0.45 : opacityWhileDragging)
         .offset(x: shiftWhileDragging)

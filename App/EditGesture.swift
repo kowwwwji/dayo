@@ -2,16 +2,22 @@ import DayoCore
 import SwiftUI
 
 extension View {
-    /// 項目へのクリック。Mac は左クリックで選択、右クリック（control + クリックも）で選択して編集を開く。iPhone はタップで編集を開く。
+    /// 項目へのクリック。Mac は左クリックで選択して情報カードを出し、右クリック（control + クリックも）で選択して編集を開く。iPhone はタップで編集を開く。
     /// Mac で普通のクリックに編集を割り当てないのは、ドラッグやダブルクリックでの登録と取り違えて開いてしまうのを避けるため。
-    func onItemClick(select: @escaping () -> Void, edit: @escaping () -> Void) -> some View {
+    /// `cardInset` は左端からカードを出さない幅（リマインダーのチェックの丸。そこのクリックは完了だけ）。
+    func onItemClick(
+        select: @escaping () -> Void, card: ItemCardClick? = nil, cardInset: CGFloat = 0, edit: @escaping () -> Void
+    ) -> some View {
         #if os(macOS)
-        overlay(ClickCatcher(select: select, edit: edit).allowsHitTesting(false))
+        overlay(ClickCatcher(select: select, card: card, cardInset: cardInset, edit: edit).allowsHitTesting(false))
         #else
         onTapGesture(perform: edit)
         #endif
     }
 }
+
+/// 項目の左端にあるリマインダーのチェックの丸の幅（左の余白を含む）。ここのクリックは完了だけで、情報カードは出さない。
+let checkCircleWidth: CGFloat = 24
 
 extension EnvironmentValues {
     /// クリックした項目を選択する。タイムラインの画面が差し込む。
@@ -24,6 +30,8 @@ extension EnvironmentValues {
 /// ヒットテストには加わらず、アプリに届いたイベントを見て自分の範囲内なら拾う。
 private struct ClickCatcher: NSViewRepresentable {
     let select: () -> Void
+    let card: ItemCardClick?
+    let cardInset: CGFloat
     let edit: () -> Void
 
     func makeNSView(context: Context) -> CatcherView {
@@ -32,30 +40,79 @@ private struct ClickCatcher: NSViewRepresentable {
 
     func updateNSView(_ view: CatcherView, context: Context) {
         view.select = select
+        view.card = card
+        view.cardInset = cardInset
         view.edit = edit
     }
 
     final class CatcherView: NSView {
         var select: (() -> Void)?
+        var card: ItemCardClick?
+        var cardInset: CGFloat = 0
         var edit: (() -> Void)?
         private var monitor: Any?
+        /// 押した位置。離したときにカードを出すクリックなら入っている
+        private var cardPress: CGPoint?
+        /// 離したあと、ダブルクリックにならなかったら出すカード
+        private var pendingOpen: DispatchWorkItem?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             removeMonitor()
             guard window != nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown]) { [weak self] event in
-                guard let self, self.catches(event) else { return event }
+            monitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.rightMouseDown, .leftMouseDown, .leftMouseUp]
+            ) { [weak self] event in
+                guard let self else { return event }
+                if event.type == .leftMouseUp {
+                    self.openCardIfClicked(event)
+                    return event
+                }
+                self.cardPress = nil
+                // 次に押されたら、待っていたカードは出さない（ダブルクリックの 2 回目、別の項目のクリック）
+                self.pendingOpen?.cancel()
+                self.pendingOpen = nil
+                guard self.catches(event) else { return event }
+                // 選択すると、出ているカードは選択に付いてくる。出ていたかは先に見ておく
+                let wasShowingCard = self.card?.isShowing() == true
                 self.select?()
                 let isSecondaryClick = event.type == .rightMouseDown || event.modifierFlags.contains(.control)
                 // 左クリックは選択するだけで、そのまま下へ通す（ドラッグ・ダブルクリック・チェックの丸が受ける）
-                guard isSecondaryClick else { return event }
+                guard isSecondaryClick else {
+                    // カードは押したときに閉じ、離したときに出す。ドラッグとダブルクリック（新規登録）では出さない。
+                    // カードの出ている項目のクリックは、閉じるだけ
+                    self.card?.close()
+                    let point = self.convert(event.locationInWindow, from: nil)
+                    if !wasShowingCard, event.clickCount == 1, point.x >= self.cardInset {
+                        self.cardPress = event.locationInWindow
+                    }
+                    return event
+                }
                 self.edit?()
                 return nil
             }
         }
 
+        /// 押した所からほとんど動かさずに離したら、少し待ってカードを出す。
+        /// すぐ出すと、ダブルクリック（新規登録）の 1 回目でカードが一瞬出てしまう。
+        /// 待つのは 0.25 秒（システムのダブルクリックの間隔がそれより短ければ、その間隔）。間隔いっぱい（既定 0.5 秒）待つと、
+        /// 普通のクリックのカードが遅く感じる。ダブルクリックの 2 回目は、1 回目を離してからふつう 0.2 秒以内に押される。
+        private static let cardDelay = min(NSEvent.doubleClickInterval, 0.25)
+        private func openCardIfClicked(_ event: NSEvent) {
+            guard let press = cardPress else { return }
+            cardPress = nil
+            let moved = hypot(event.locationInWindow.x - press.x, event.locationInWindow.y - press.y)
+            guard let window, event.window === window, moved < 3 else { return }
+            let open = DispatchWorkItem { [weak self] in
+                self?.pendingOpen = nil
+                self?.card?.open()
+            }
+            pendingOpen = open
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.cardDelay, execute: open)
+        }
+
         deinit {
+            pendingOpen?.cancel()
             removeMonitor()
         }
 

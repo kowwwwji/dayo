@@ -38,7 +38,9 @@ struct TimelineRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .onItemClick(select: onSelect) { editing.open(item, at: anchor) }
+            .onItemClick(select: onSelect, card: editing.cardClick(for: item, at: anchor)) {
+                editing.open(item, at: anchor)
+            }
             .itemEditor(for: item, editing, at: anchor)
         }
         .padding(.vertical, 2)
