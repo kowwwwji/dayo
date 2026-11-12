@@ -12,7 +12,6 @@ enum TimelineKey {
     case toggleCompleted
     case openEditor
     case clearSelection
-    case showToday
     case showPrevious
     case showNext
     case toggleHelp
@@ -24,7 +23,6 @@ enum TimelineKey {
     case shorten
     case deleteSelection
     case undo
-    case jumpToDate
 
     /// キーを押し続けたときに繰り返すか。選択の移動だけ繰り返す。
     /// 完了の切替は保存が終わる前に次が来ると同じ状態を二重に書き込むので、繰り返さない。削除も 1 回押して 1 件だけ。
@@ -87,9 +85,7 @@ enum TimelineKey {
         case "k": self = .selectPrevious
         case "h": self = .selectLeft
         case "l": self = .selectRight
-        case "t": self = .showToday
         case "u": self = .undo
-        case "g": self = .jumpToDate
         // delete（⌫）と前方削除（⌦）も d と同じ
         case "d", "\u{7f}", "\u{F728}": self = .deleteSelection
         case " ": self = .toggleCompleted
@@ -218,7 +214,6 @@ struct KeyHelpView: View {
         Section(title: "選ぶ", rows: [
             ("j or ↓ / k or ↑", "下 / 上の項目を選ぶ"),
             ("h or ← / l or →", "3日・週: 隣の日の列へ　日: 前 / 次の日へ"),
-            ("t", "今日へ"),
             ("esc", "選択を解除"),
         ]),
         Section(title: "選択中の項目", rows: [
@@ -232,7 +227,8 @@ struct KeyHelpView: View {
         ]),
         Section(title: "表示", rows: [
             ("⌘← / ⌘→", "前 / 次の日（3日表示では 3 日、週表示では週）"),
-            ("g", "日付を指定して移動"),
+            ("⌘t", "今日へ"),
+            ("⌘g", "日付を指定して移動"),
             ("⌘1 / ⌘2 / ⌘3", "日表示 / 3日表示 / 週表示"),
             ("⌘s", "サイドバーを出す / 隠す"),
             ("⌘r", "最新の状態に更新"),
@@ -290,6 +286,7 @@ enum SidebarSetting {
 struct TimelineCommands: Commands {
     let model: TimelineModel
     let quickInputFocus: QuickInputFocus
+    let dateJump: DateJumpRequest
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -305,6 +302,12 @@ struct TimelineCommands: Commands {
                 .keyboardShortcut("2")
             Button("週表示") { TimelineModeSetting.set(.week, on: model) }
                 .keyboardShortcut("3")
+            Divider()
+            // どこを見るかを変える操作は ⌘ 付きに揃える（修飾キーなしは、選択と選択中の項目への操作）
+            Button("今日へ移動") { Task { await model.showToday() } }
+                .keyboardShortcut("t")
+            Button("日付へ移動…") { dateJump.isPresented = true }
+                .keyboardShortcut("g")
             Divider()
             Button("最新の状態に更新") { Task { await model.refresh() } }
                 .keyboardShortcut("r")

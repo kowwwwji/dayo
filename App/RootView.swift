@@ -7,7 +7,10 @@ struct RootView: View {
     let model: TimelineModel
     let quickInput: QuickInputModel
     var quickInputFocus: QuickInputFocus?
-    @State private var dateJump = DateJumpRequest()
+    /// メニュー（⌘g）からも開くので、アプリ側が持つものを受け取る。無ければ自前のものを使う
+    var dateJumpRequest: DateJumpRequest?
+    @State private var ownDateJump = DateJumpRequest()
+    private var dateJump: DateJumpRequest { dateJumpRequest ?? ownDateJump }
     let makeEditor: @MainActor (TimelineItem) -> ItemEditorModel
     let makeNewEditor: @MainActor (Date, Bool) -> ItemEditorModel
     @AppStorage(DayTitle.showsWeekNumberKey) private var showsWeekNumber = true

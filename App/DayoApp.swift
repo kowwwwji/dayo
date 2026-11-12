@@ -6,6 +6,7 @@ struct DayoApp: App {
     @State private var model: TimelineModel
     @State private var quickInput: QuickInputModel
     @State private var quickInputFocus = QuickInputFocus()
+    @State private var dateJump = DateJumpRequest()
     private let source = EventKitRepository()
     #if os(macOS)
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
@@ -63,13 +64,14 @@ struct DayoApp: App {
                 model: model,
                 quickInput: quickInput,
                 quickInputFocus: quickInputFocus,
+                dateJumpRequest: dateJump,
                 makeEditor: makeEditor(for:),
                 makeNewEditor: makeNewEditor(start:isAllDay:)
             )
         }
         #if os(macOS)
         .commands {
-            TimelineCommands(model: model, quickInputFocus: quickInputFocus)
+            TimelineCommands(model: model, quickInputFocus: quickInputFocus, dateJump: dateJump)
         }
         #endif
         #if os(macOS)

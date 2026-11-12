@@ -84,7 +84,6 @@ struct DayTimelineView: View {
         case .selectPrevious: model.selectPrevious()
         case .selectLeft: Task { await model.selectLeft() }
         case .selectRight: Task { await model.selectRight() }
-        case .showToday: Task { await model.showToday() }
         case .showPrevious: Task { await model.showPrevious() }
         case .showNext: Task { await model.showNext() }
         case .toggleCompleted:
@@ -104,9 +103,6 @@ struct DayTimelineView: View {
             guard let item = model.selectedItem, item.isEditable else { return false }
             delete(item)
         case .undo: Task { await model.undo() }
-        case .jumpToDate:
-            guard let dateJump else { return false }
-            dateJump.isPresented = true
         case .clearSelection:
             // 一覧が出ていれば、まずそれを閉じる
             if showsKeyHelp {
