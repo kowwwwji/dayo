@@ -48,10 +48,13 @@ struct DayoApp: App {
         )
         let timeline = model
         editor.onChanged = { [weak editor] in
-            if let kind = editor?.kind {
-                defaults.set(kind == .reminder ? "reminder" : "event", forKey: Self.lastCreatedKindKey)
+            let draft = editor?.draft
+            if let draft {
+                defaults.set(draft.kind == .reminder ? "reminder" : "event", forKey: Self.lastCreatedKindKey)
             }
             await timeline.load()
+            // 続けて o で後ろに足せるよう、登録した項目を選ぶ
+            if let draft, let start = draft.start { timeline.selectCreated(title: draft.title, start: start) }
         }
         return editor
     }

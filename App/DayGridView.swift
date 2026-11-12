@@ -26,6 +26,8 @@ struct DayGridView: View {
     /// 表示中の範囲の内容が読み込み済みか。帯の有無が確定してから初期位置へスクロールする
     let isLoaded: Bool
     let editing: ItemEditing
+    /// 新規登録を開いた位置。時刻付きなら、そこに仮の項目を置く
+    let newItem: NewItemPlacement
     let board: TimelineDragBoard
     let onToggle: (TimelineItem) -> Void
     /// ドラッグで落とした。繰り返し予定ならどの回に及ぶかも渡す
@@ -75,17 +77,10 @@ struct DayGridView: View {
     private var pendingMove: GridMove? {
         if case .move(let move) = pendingChange { move } else { nil }
     }
-    /// ダブルクリックで新規登録を開いた場所。エディタを閉じるまで、そこに仮の項目を置く
-    @State private var newSlot: NewSlot?
     private let clock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
-    private struct NewSlot {
-        let day: Date
-        let minute: Int
-    }
-
     /// 新規登録のエディタを開く場所のキー。
-    private static let newItemAnchor = "grid-new"
+    private static let newItemAnchor = NewItemPlacement.gridAnchor
     /// 項目を並べる面の座標空間。項目の上のダブルクリックも、この座標で位置を受ける
     fileprivate static let itemSpace = "grid-items"
 
@@ -120,6 +115,7 @@ struct DayGridView: View {
                 ZStack(alignment: .topLeading) {
                     scrollAnchors(axis)
                     selectionAnchor(axis)
+                    newItemScrollTarget(axis)
                     hourLines(axis)
                     daySeparators
                     GeometryReader { geometry in
@@ -149,7 +145,7 @@ struct DayGridView: View {
             }
             .onChange(of: days) { _, _ in
                 expanded = []
-                newSlot = nil
+                newItem.reset()
             }
             // 日を変えた直後は前の日の内容で帯が決まっているので、読み込み完了を待ってから位置を合わせる
             .onChange(of: isLoaded) { _, loaded in
@@ -159,6 +155,15 @@ struct DayGridView: View {
             // 選択した項目が画面の外なら、見えるところまでだけ動かす
             .onChange(of: selection) { _, _ in
                 if selectedPlacement != nil { proxy.scrollTo(Self.selectionID) }
+            }
+            // キーで開いた新規登録が畳んだ帯に掛かれば開き、画面の外ならそこまで動かす。
+            // 位置だけを見ると、閉じて同じ位置で開き直したときに動かないので、開いているかと合わせて見る
+            .onChange(of: openNewSlot) { _, slot in
+                guard let minute = slot?.startMinute else { return }
+                for range in axis.collapsed where minute < range.upperBound && minute + 60 > range.lowerBound {
+                    expanded.insert(range.lowerBound == 0 ? .early : .late)
+                }
+                DispatchQueue.main.async { proxy.scrollTo(Self.newItemID) }
             }
             .confirmationDialog(
                 "繰り返しの予定です",
@@ -355,8 +360,32 @@ struct DayGridView: View {
         let minute = axis.clampedStart(minute: axis.minute(forY: location.y) / 15 * 15, duration: 60)
         let day = columns[dayIndex].day
         guard let start = Calendar.autoupdatingCurrent.date(byAdding: .minute, value: minute, to: day) else { return }
-        newSlot = NewSlot(day: day, minute: minute)
-        editing.openNew(at: start, isAllDay: false, anchor: Self.newItemAnchor)
+        newItem.open(NewItemSlot(day: day, startMinute: minute, start: start), with: editing)
+    }
+
+    /// 時間軸に置いた新規登録の位置。`startMinute` が nil（終日）なら nil。
+    private var newSlot: (day: Date, minute: Int)? {
+        guard let slot = newItem.slot, let minute = slot.startMinute else { return nil }
+        return (slot.day, minute)
+    }
+
+    private static let newItemID = "new-item"
+
+    /// 時間軸で開いている新規登録の位置。閉じていれば nil。
+    private var openNewSlot: NewItemSlot? {
+        editing.isOpenForNew(at: Self.newItemAnchor) ? newItem.slot : nil
+    }
+
+    /// 新規登録の仮の項目へスクロールするときの行き先。仮の項目も `offset` で置いているので、同じ位置に目印を置く。
+    @ViewBuilder
+    private func newItemScrollTarget(_ axis: DayGridAxis) -> some View {
+        if let newSlot {
+            Color.clear
+                .frame(height: max(18, axis.height(fromMinute: newSlot.minute, to: min(24 * 60, newSlot.minute + 60))))
+                .alignmentGuide(.top) { _ in -axis.y(forMinute: newSlot.minute) }
+                .id(Self.newItemID)
+                .allowsHitTesting(false)
+        }
     }
 
     /// 新規登録中の仮の項目。エディタはここから出す。入力中のタイトルと種別を映す。

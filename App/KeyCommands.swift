@@ -16,6 +16,9 @@ enum TimelineKey {
     case nextLink
     case previousLink
     case openEditor
+    /// 選択中の項目の後ろ / 前に新規登録を開く（o / ⇧o）
+    case newAfter
+    case newBefore
     case clearSelection
     case showPrevious
     case showNext
@@ -77,6 +80,7 @@ enum TimelineKey {
             case "k": self = .moveEarlier
             case "h": self = .moveToPreviousDay
             case "l": self = .moveToNextDay
+            case "o": self = .newBefore
             default: return nil
             }
             return
@@ -100,6 +104,7 @@ enum TimelineKey {
         case "d", "\u{7f}", "\u{F728}": self = .deleteSelection
         case " ": self = .toggleCard
         case "x": self = .toggleCompleted
+        case "o": self = .newAfter
         case "\t": self = .nextLink
         case "\r", "\u{3}": self = .openEditor
         case "\u{1b}": self = .clearSelection
@@ -233,6 +238,10 @@ struct KeyHelpView: View {
             ("h or ← / l or →", "3日・週: 隣の日の列へ　日: 前 / 次の日へ"),
             ("esc", "情報カードを閉じる / 選択を解除"),
         ]),
+        Section(title: "登録", rows: [
+            ("o / ⇧o", "選択中の項目の後ろ / 前に登録（選択なしは今の時刻から）"),
+            ("⌘n", "入力欄へ"),
+        ]),
         Section(title: "選択中の項目", rows: [
             ("return", "編集を開く（カードでリンクを選んでいれば、それを開く）"),
             ("space", "情報カードを出す / 閉じる"),
@@ -253,7 +262,6 @@ struct KeyHelpView: View {
             ("⌘r", "最新の状態に更新"),
         ]),
         Section(title: "そのほか", rows: [
-            ("⌘n", "入力欄へ"),
             ("?", "この一覧を出す / 閉じる"),
         ]),
     ]

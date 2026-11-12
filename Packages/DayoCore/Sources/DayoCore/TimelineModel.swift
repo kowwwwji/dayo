@@ -29,6 +29,22 @@ public struct PendingDeletion: Equatable {
     }
 }
 
+/// キーで開く新規登録の位置。`startMinute` が nil なら、その日の終日。
+public struct NewItemSlot: Equatable, Sendable {
+    /// その日の 0:00。
+    public let day: Date
+    public let startMinute: Int?
+    public let start: Date
+
+    public var isAllDay: Bool { startMinute == nil }
+
+    public init(day: Date, startMinute: Int?, start: Date) {
+        self.day = day
+        self.startMinute = startMinute
+        self.start = start
+    }
+}
+
 /// タイムライン画面の状態。権限・表示範囲・読み込み・完了操作・変更監視を持つ。
 /// 日表示・3 日表示・週表示は列の数が違うだけで、同じ状態から導く。
 @MainActor
@@ -65,8 +81,15 @@ public final class TimelineModel {
     /// キー操作で選択中の項目。画面から消えたら外れる。
     public var selection: TimelineSelection? { cursorPosition?.selection }
     private var cursorPosition: TimelineCursor.Position?
+    /// ユーザーが選択を動かした。登録した項目を後から選ぶ待ちは、選び直した選択を奪わないよう忘れる。
+    private func userMovedSelection(to position: TimelineCursor.Position?) {
+        createdToSelect = nil
+        cursorPosition = position
+    }
     /// キー操作での移動を保存している間。保存前の内容を元に次の移動を重ねないよう、その間の移動は受けない。
     private var isMovingSelection = false
+    /// 登録した項目で、まだ画面に出ていないもの。次に読み込みが終わったとき選ぶ（見つからなくても、読み込みに失敗しても忘れる）。
+    private var createdToSelect: (title: String, start: Date)?
 
     /// 取り消せる操作。新しいものが末尾。
     private enum Change {
@@ -239,11 +262,16 @@ public final class TimelineModel {
             if cursorPosition == nil, let selected {
                 cursorPosition = position(of: selected.item, startingAt: selected.item.start, like: selected.position)
             }
+            if let created = createdToSelect {
+                createdToSelect = nil
+                selectCreatedIfShown(title: created.title, start: created.start)
+            }
             hasLoaded = true
             loadedRange = range
             errorMessage = nil
         } catch {
             guard generation == loadGeneration else { return }
+            createdToSelect = nil
             errorMessage = error.localizedDescription
         }
     }
@@ -450,12 +478,12 @@ public final class TimelineModel {
 
     /// 選択を下の項目へ。何も選択していなければ、今日（見えていなければ最初の日）の列の先頭を選ぶ。
     public func selectNext() {
-        cursorPosition = movedVertically(by: 1)
+        userMovedSelection(to: movedVertically(by: 1))
     }
 
     /// 選択を上の項目へ。何も選択していなければ、今日（見えていなければ最初の日）の列の末尾を選ぶ。
     public func selectPrevious() {
-        cursorPosition = movedVertically(by: -1)
+        userMovedSelection(to: movedVertically(by: -1))
     }
 
     /// 列が複数なら左隣の、項目のある日の列へ。無ければ前の週へ移る（3 日表示は 1 日ずれる）。日表示では前の日へ。
@@ -477,11 +505,68 @@ public final class TimelineModel {
             cursorPosition?.day ?? (containsToday ? calendar.startOfDay(for: now()) : days.first)
         }
         guard let day, let position = cursor.resolve(.init(selection: selection, day: day)) else { return }
-        cursorPosition = position
+        userMovedSelection(to: position)
     }
 
     public func clearSelection() {
-        cursorPosition = nil
+        userMovedSelection(to: nil)
+    }
+
+    /// 選択の後ろ（`after`）か前に新規登録するときの位置。
+    /// 時刻付きの項目なら、その列に描いた終わりから / 始まりで終わるよう 1 時間前から、15 分の区切りに寄せて日の中に収める。
+    /// 終日の項目ならその日の終日。期限切れか選択なしなら、今日が見えていれば今の次の 15 分の区切りから、
+    /// 見えていなければ左端の日の `dayStartHour` 時から。
+    public func newItemSlot(after: Bool, dayStartHour: Int) -> NewItemSlot? {
+        let quarter = 15, length = 60, dayEnd = 24 * 60
+        let day: Date
+        var minute: Int?
+        if let position = cursorPosition, case .grid(let column) = position.selection.place,
+           let placement = columns.first(where: { $0.day == column })?.placements
+               .first(where: { $0.id == position.selection.itemID }) {
+            day = column
+            minute = after
+                ? (placement.endMinute + quarter - 1) / quarter * quarter
+                : Int((Double(placement.startMinute - length) / Double(quarter)).rounded(.down)) * quarter
+        } else if let position = cursorPosition, position.selection.place == .allDay {
+            day = position.day
+        } else if containsToday {
+            let now = now()
+            day = calendar.startOfDay(for: now)
+            let current = Int(now.timeIntervalSince(day) / 60)
+            minute = (current + quarter - 1) / quarter * quarter
+        } else {
+            guard let first = days.first else { return nil }
+            day = first
+            minute = max(0, min(23, dayStartHour)) * 60
+        }
+        minute = minute.map { max(0, min(dayEnd - length, $0)) }
+        guard let start = calendar.date(byAdding: .minute, value: minute ?? 0, to: day) else { return nil }
+        return NewItemSlot(day: day, startMinute: minute, start: start)
+    }
+
+    /// 登録した項目を選ぶ。登録は識別子を返さないので、タイトルと開始日時で探す。
+    /// まだ画面に無ければ（保存後の読み直しが変更通知の読み直しに追い越されたとき）、次の読み込みのあとに選ぶ。
+    public func selectCreated(title: String, start: Date) {
+        if !selectCreatedIfShown(title: title, start: start) {
+            createdToSelect = (title, start)
+        }
+    }
+
+    @discardableResult
+    private func selectCreatedIfShown(title: String, start: Date) -> Bool {
+        let matches: (TimelineItem) -> Bool = { $0.title == title && $0.start == start && !$0.isVirtual }
+        let day = calendar.startOfDay(for: start)
+        let selection: TimelineSelection? = if let found = columns.first(where: { $0.day == day })?
+            .placements.map(\.item).first(where: matches) {
+            TimelineSelection(itemID: found.id, place: .grid(day: day))
+        } else if let found = allDaySpans.map(\.item).first(where: matches) {
+            TimelineSelection(itemID: found.id, place: .allDay)
+        } else {
+            nil
+        }
+        guard let selection, let position = cursor.resolve(.init(selection: selection, day: day)) else { return false }
+        cursorPosition = position
+        return true
     }
 
     /// 選択中のリマインダーを完了 / 未完了にする。予定には何もしない。
@@ -677,6 +762,7 @@ public final class TimelineModel {
     }
 
     private func selectSideways(by step: Int) async {
+        createdToSelect = nil
         guard mode != .day else {
             await showAdjacent(by: step)
             return

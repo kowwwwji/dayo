@@ -46,6 +46,8 @@ struct WeekHeaderView: View {
     /// キー操作で選択中の項目
     var selection: TimelineSelection?
     let editing: ItemEditing
+    /// 新規登録を開いた位置。終日なら、その日に仮のチップを置く
+    let newItem: NewItemPlacement
     let board: TimelineDragBoard
     let onToggle: (TimelineItem) -> Void
     /// 終日の項目を日数ぶん動かした
@@ -57,10 +59,14 @@ struct WeekHeaderView: View {
     private let laneHeight: CGFloat = 26
     /// 終日の帯をそのまま見せる段数。超えた分は内部スクロール。
     private let visibleLanes = 4
-    /// ダブルクリックで終日の新規登録を開いた日。エディタを閉じるまで、そこに仮のチップを置く
-    @State private var newDay: Date?
     /// 新規登録のエディタを開く場所のキー。
-    private static let newItemAnchor = "allDay-new"
+    private static let newItemAnchor = NewItemPlacement.allDayAnchor
+
+    /// 終日の新規登録を開いた日。エディタを閉じるまで、そこに仮のチップを置く
+    private var newDay: Date? {
+        guard let slot = newItem.slot, slot.isAllDay else { return nil }
+        return slot.day
+    }
 
     private var spanLaneCount: Int { (spans.map(\.lane).max() ?? -1) + 1 }
     private var showsNewChip: Bool { newDay != nil && editing.isOpenForNew(at: Self.newItemAnchor) }
@@ -79,7 +85,7 @@ struct WeekHeaderView: View {
                 .padding(.leading, DayGridView.labelWidth)
                 .padding(.trailing, DayGridView.trailingInset)
         }
-        .onChange(of: days) { _, _ in newDay = nil }
+        .onChange(of: days) { _, _ in newItem.reset() }
     }
 
     /// 選択中の帯。終日欄にあるものだけ。
@@ -89,6 +95,7 @@ struct WeekHeaderView: View {
     }
 
     private static let selectionID = "selection"
+    private static let newChipID = "new-chip"
 
     private var allDayRow: some View {
         ScrollViewReader { proxy in
@@ -96,6 +103,10 @@ struct WeekHeaderView: View {
                 // 段が多くて隠れている帯を選んだら、見えるところまで動かす
                 .onChange(of: selectedSpan?.id) { _, id in
                     if id != nil { proxy.scrollTo(Self.selectionID) }
+                }
+                // キーで開いた仮のチップが隠れた段にあれば、見えるところまで動かす
+                .onChange(of: showsNewChip) { _, shows in
+                    if shows { DispatchQueue.main.async { proxy.scrollTo(Self.newChipID) } }
                 }
         }
     }
@@ -148,6 +159,15 @@ struct WeekHeaderView: View {
                         .allowsHitTesting(false)
                 }
             }
+            .overlay(alignment: .top) {
+                if showsNewChip {
+                    Color.clear
+                        .frame(height: laneHeight)
+                        .alignmentGuide(.top) { _ in -CGFloat(spanLaneCount) * laneHeight }
+                        .id(Self.newChipID)
+                        .allowsHitTesting(false)
+                }
+            }
         }
         .frame(height: CGFloat(min(laneCount, visibleLanes)) * laneHeight)
         .padding(.leading, DayGridView.labelWidth)
@@ -174,7 +194,6 @@ struct WeekHeaderView: View {
     /// その列の日の終日として新規登録を開く。
     private func openNewItem(atColumn index: Int) {
         guard days.indices.contains(index) else { return }
-        newDay = days[index]
-        editing.openNew(at: days[index], isAllDay: true, anchor: Self.newItemAnchor)
+        newItem.open(NewItemSlot(day: days[index], startMinute: nil, start: days[index]), with: editing)
     }
 }
