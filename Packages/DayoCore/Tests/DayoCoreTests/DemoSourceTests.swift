@@ -56,6 +56,39 @@ import Testing
         #expect(try await demo.snapshot(for: day(0), includingOverdue: false).overdue.isEmpty)
     }
 
+    @Test func overdueForALaterRangeIncludesOpenRemindersOfDaysNotViewedYet() async throws {
+        let snapshot = try await source().snapshot(for: day(14), includingOverdue: true)
+        #expect(snapshot.overdue.map(\.title).contains("資料を送る"))
+        #expect(snapshot.overdue.map(\.title).contains("市役所に書類を出す"))
+    }
+
+    @Test func anEventWithoutAnEndEndsAtItsStartLikeEventKit() async throws {
+        let demo = source()
+        let start = calendar.date(byAdding: .hour, value: 3, to: now)!
+        try await demo.create(ItemDraft(kind: .event, title: "終わり無し", start: start))
+        let created = try #require(
+            try await demo.snapshot(for: day(0), includingOverdue: false).items.first { $0.title == "終わり無し" }
+        )
+        #expect(created.end == start)
+    }
+
+    @Test func readsAndWritesFromManyTasksAtOnceKeepEveryItem() async throws {
+        let demo = source()
+        await withThrowingTaskGroup(of: Void.self) { group in
+            for index in 0..<200 {
+                group.addTask {
+                    if index.isMultiple(of: 2) {
+                        try await demo.create(ItemDraft(kind: .reminder, title: "並行 \(index)"))
+                    } else {
+                        _ = try await demo.snapshot(for: day(index % 30), includingOverdue: true)
+                    }
+                }
+            }
+        }
+        let undated = try await demo.snapshot(for: day(0), includingOverdue: false).undated
+        #expect(undated.filter { $0.title.hasPrefix("並行") }.count == 100)
+    }
+
     @Test func undatedRemindersAreAlwaysIncluded() async throws {
         let snapshot = try await source().snapshot(for: day(5), includingOverdue: false)
         #expect(!snapshot.undated.isEmpty)

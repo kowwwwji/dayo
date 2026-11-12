@@ -7,9 +7,15 @@ import Foundation
 ///
 /// 中身は曜日ごとの決まった並びで、日を表示したときに作る。今日より前の日のリマインダーは完了済みにし、
 /// 期日が過ぎた未完了のリマインダーは昨日の 1 件だけにする。
-public final class DemoSource: CalendarSource {
+///
+/// EventKit と違い、日時を変えても予定の `id` は変わらず、繰り返しは作らない。選択や取り消しの確認には、
+/// 日時の変更と繰り返しが絡まない操作を使う。
+///
+/// 呼び出しはメインアクターの外で重なって走るので、中身の読み書きは `lock` の中で行う。
+public final class DemoSource: CalendarSource, @unchecked Sendable {
     private let calendar: Calendar
     private let now: () -> Date
+    private let lock = NSLock()
     private var items: [String: TimelineItem] = [:]
     private var generatedDays: Set<Date> = []
     private var nextID = 0
@@ -30,11 +36,16 @@ public final class DemoSource: CalendarSource {
     public func requestAccess() async throws -> AccessStatus { .granted }
 
     public func snapshot(for range: DateInterval, includingOverdue: Bool) async throws -> TimelineSnapshot {
-        var day = calendar.startOfDay(for: range.start)
-        while day < range.end {
-            generate(day)
-            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
-            day = next
+        lock.withLock { read(range, includingOverdue: includingOverdue) }
+    }
+
+    private func read(_ range: DateInterval, includingOverdue: Bool) -> TimelineSnapshot {
+        generateDays(from: range.start, to: range.end)
+        // 期限切れは期間より前のすべての日から探すので、今日から期間の始まりまでの日も作っておく（遠い先は 1 年で打ち切る）
+        if includingOverdue {
+            let today = calendar.startOfDay(for: now())
+            let limit = calendar.date(byAdding: .day, value: 366, to: today) ?? today
+            generateDays(from: today, to: min(range.start, limit))
         }
         let all = items.values.sorted { ($0.start ?? .distantPast, $0.id) < ($1.start ?? .distantPast, $1.id) }
         return TimelineSnapshot(
@@ -48,42 +59,56 @@ public final class DemoSource: CalendarSource {
 
     public func setCompleted(_ completed: Bool, for item: TimelineItem) async throws {
         guard item.kind == .reminder else { throw CalendarSourceError.notAReminder }
-        guard items[item.calendarItemIdentifier] != nil else { throw CalendarSourceError.itemNotFound }
-        items[item.calendarItemIdentifier]?.isCompleted = completed
+        try lock.withLock {
+            guard items[item.calendarItemIdentifier] != nil else { throw CalendarSourceError.itemNotFound }
+            items[item.calendarItemIdentifier]?.isCompleted = completed
+        }
         announce()
     }
 
     public func create(_ draft: ItemDraft) async throws {
         if draft.kind == .event, draft.start == nil { throw CalendarSourceError.eventNeedsStart }
-        let list = try destination(for: draft) ?? (draft.kind == .event ? Self.work : Self.reminders)
-        let id = add(kind: draft.kind, title: draft.title, start: draft.start, end: draft.end,
-                     isAllDay: draft.isAllDay, in: list)
-        apply(draft, to: id)
+        let list = try destination(for: draft, kind: draft.kind) ?? (draft.kind == .event ? Self.work : Self.reminders)
+        lock.withLock {
+            let id = add(kind: draft.kind, title: draft.title, start: draft.start, end: Self.end(of: draft),
+                         isAllDay: draft.isAllDay, in: list)
+            apply(draft, to: id)
+        }
         announce()
     }
 
+    /// 種別は変えられない（EventKit と同じ）。`draft.kind` ではなく元の項目の種別で写す。
     public func update(_ item: TimelineItem, with draft: ItemDraft, span: EditSpan) async throws {
-        guard var stored = items[item.calendarItemIdentifier] else { throw CalendarSourceError.itemNotFound }
-        if draft.kind == .event, draft.start == nil { throw CalendarSourceError.eventNeedsStart }
-        if let list = try destination(for: draft) {
-            stored.sourceName = list.name
-            stored.color = list.color
-            stored.calendarIdentifier = list.id
+        try lock.withLock {
+            guard var stored = items[item.calendarItemIdentifier] else { throw CalendarSourceError.itemNotFound }
+            if stored.kind == .event, draft.start == nil { throw CalendarSourceError.eventNeedsStart }
+            if let list = try destination(for: draft, kind: stored.kind) {
+                stored.sourceName = list.name
+                stored.color = list.color
+                stored.calendarIdentifier = list.id
+            }
+            stored.title = draft.title
+            stored.start = draft.start
+            stored.end = stored.kind == .event ? Self.end(of: draft) : nil
+            stored.isAllDay = draft.isAllDay
+            items[item.calendarItemIdentifier] = stored
+            apply(draft, to: item.calendarItemIdentifier)
         }
-        stored.title = draft.title
-        stored.start = draft.start
-        stored.end = draft.kind == .event ? draft.end : nil
-        stored.isAllDay = draft.isAllDay
-        items[item.calendarItemIdentifier] = stored
-        apply(draft, to: item.calendarItemIdentifier)
         announce()
     }
 
     public func delete(_ item: TimelineItem, span: EditSpan) async throws {
-        guard items.removeValue(forKey: item.calendarItemIdentifier) != nil else {
-            throw CalendarSourceError.itemNotFound
+        try lock.withLock {
+            guard items.removeValue(forKey: item.calendarItemIdentifier) != nil else {
+                throw CalendarSourceError.itemNotFound
+            }
         }
         announce()
+    }
+
+    /// 予定の終わり。無ければ始まりと同じ（`EventKitRepository` と同じ）。
+    private static func end(of draft: ItemDraft) -> Date? {
+        draft.kind == .event ? draft.end ?? draft.start : nil
     }
 
     public func destinations() async throws -> [Destination] {
@@ -185,6 +210,15 @@ public final class DemoSource: CalendarSource {
         }
     }
 
+    private func generateDays(from start: Date, to end: Date) {
+        var day = calendar.startOfDay(for: start)
+        while day < end {
+            generate(day)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+    }
+
     private func generate(_ day: Date) {
         guard generatedDays.insert(day).inserted else { return }
         let isPast = day < calendar.startOfDay(for: now())
@@ -228,16 +262,17 @@ public final class DemoSource: CalendarSource {
 
     /// 日時と保存先以外の欄を写す。
     private func apply(_ draft: ItemDraft, to id: String) {
+        guard let kind = items[id]?.kind else { return }
         items[id]?.notes = draft.notes
-        items[id]?.location = draft.kind == .event ? draft.location : nil
+        items[id]?.location = kind == .event ? draft.location : nil
         items[id]?.url = draft.url
-        items[id]?.priority = draft.kind == .reminder ? draft.priority : .none
-        items[id]?.earlyReminderMinutes = draft.kind == .reminder ? draft.earlyReminderMinutes : nil
+        items[id]?.priority = kind == .reminder ? draft.priority : .none
+        items[id]?.earlyReminderMinutes = kind == .reminder ? draft.earlyReminderMinutes : nil
     }
 
     /// `EventKitRepository` と同じ決め方: 識別子、無ければ名前。名前があるのに見つからなければエラー。
-    private func destination(for draft: ItemDraft) throws -> List? {
-        let candidates = Self.lists.filter { $0.kind == draft.kind }
+    private func destination(for draft: ItemDraft, kind: ItemKind) throws -> List? {
+        let candidates = Self.lists.filter { $0.kind == kind }
         if let id = draft.calendarID {
             guard let found = candidates.first(where: { $0.id == id }) else { throw CalendarSourceError.noCalendar }
             return found
