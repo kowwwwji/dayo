@@ -32,6 +32,9 @@ struct DayTimelineView: View {
     @State private var showsKeyHelp = false
     /// 項目の情報カード（Mac のみ。クリックか space で出す）
     @State private var cards = ItemCards()
+    /// 新規登録を開いた位置（ダブルクリックか `o` / `⇧o`）
+    @State private var newItem = NewItemPlacement()
+    @AppStorage(DayHours.startKey) private var dayStartHour = DayHours.defaultStart
 
     private var editing: ItemEditing {
         var editing = ItemEditing(editor: $editor, anchor: $editorAnchor, make: makeEditor, makeNew: makeNewEditor)
@@ -133,6 +136,9 @@ struct DayTimelineView: View {
             }
             guard let selection = model.selection, let item = model.selectedItem else { return false }
             editing.open(item, at: selection.place.editorAnchor)
+        case .newAfter, .newBefore:
+            guard let slot = model.newItemSlot(after: key == .newAfter, dayStartHour: dayStartHour) else { return false }
+            newItem.open(slot, with: editing)
         case .toggleHelp: showsKeyHelp.toggle()
         case .moveLater: moveSelection { await model.moveSelectionInTime(1, span: $0) }
         case .moveEarlier: moveSelection { await model.moveSelectionInTime(-1, span: $0) }
@@ -265,6 +271,7 @@ struct DayTimelineView: View {
                     spans: model.allDaySpans,
                     selection: model.selection,
                     editing: editing,
+                    newItem: newItem,
                     board: board,
                     onToggle: { item in Task { await model.toggleCompleted(item) } },
                     onMoveDays: { item, days in
@@ -308,7 +315,12 @@ struct DayTimelineView: View {
     }
 
     /// 日表示の終日欄で新規登録のエディタを開く場所のキー。
-    private static let newAllDayAnchor = "allDay-new"
+    private static let newAllDayAnchor = NewItemPlacement.allDayAnchor
+
+    /// 日表示の終日欄で、この日の終日として新規登録を開く。
+    private func openNewAllDay() {
+        newItem.open(NewItemSlot(day: model.day, startMinute: nil, start: model.day), with: editing)
+    }
 
     /// 日表示の終日欄。チップを左から並べる。
     private var dayAllDay: some View {
@@ -325,9 +337,7 @@ struct DayTimelineView: View {
                             onMoveDays: { _ in },
                             onMakeTimed: { day, minute in makeTimed(item, day, minute) }
                         ),
-                        onDoubleClick: { _ in
-                            editing.openNew(at: model.day, isAllDay: true, anchor: Self.newAllDayAnchor)
-                        },
+                        onDoubleClick: { _ in openNewAllDay() },
                         onSelect: { model.select(TimelineSelection(itemID: item.id, place: .allDay)) }
                     ) {
                         Task { await model.toggleCompleted(item) }
@@ -341,9 +351,7 @@ struct DayTimelineView: View {
             .background {
                 Color.clear
                     .contentShape(Rectangle())
-                    .gesture(TapGesture(count: 2).onEnded {
-                        editing.openNew(at: model.day, isAllDay: true, anchor: Self.newAllDayAnchor)
-                    })
+                    .gesture(TapGesture(count: 2).onEnded { openNewAllDay() })
             }
             #endif
             // 時間軸からここへ落とした項目を終日にする
@@ -357,6 +365,7 @@ struct DayTimelineView: View {
             selection: model.selection,
             isLoaded: model.isLoadedForRange,
             editing: editing,
+            newItem: newItem,
             board: board,
             onToggle: { item in Task { await model.toggleCompleted(item) } },
             onMove: { move, span in
