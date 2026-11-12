@@ -3081,3 +3081,183 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         #expect(source.updates.isEmpty)
     }
 }
+
+/// 選択位置からの新規登録（`o` / `⇧o`）の位置と、登録後の選択。
+@MainActor
+@Suite struct NewItemSlotTests {
+    let today = iso("2026-11-10T00:00:00Z")
+    let weekStart = iso("2026-11-08T00:00:00Z")
+    let nextWeekStart = iso("2026-11-15T00:00:00Z")
+
+    private func day(_ dayOfMonth: Int) -> Date {
+        iso("2026-11-\(String(format: "%02d", dayOfMonth))T00:00:00Z")
+    }
+
+    private func event(_ id: String, _ start: String, _ end: String) -> TimelineItem {
+        TimelineItem(
+            id: id, calendarItemIdentifier: id, kind: .event, title: id, start: iso(start),
+            end: iso(end), isAllDay: false, isCompleted: false, sourceName: "",
+            accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil
+        )
+    }
+
+    private func allDay(_ id: String, _ dayOfMonth: Int) -> TimelineItem {
+        TimelineItem(
+            id: id, calendarItemIdentifier: id, kind: .event, title: id, start: day(dayOfMonth),
+            end: day(dayOfMonth).addingTimeInterval(86_399), isAllDay: true, isCompleted: false, sourceName: "",
+            accountName: "", color: CGColor(gray: 0, alpha: 1), recurrence: nil
+        )
+    }
+
+    private func loaded(
+        _ items: [TimelineItem], overdue: [TimelineItem] = [], now: String = "2026-11-10T10:07:00Z",
+        source: FakeSource = FakeSource()
+    ) async -> (TimelineModel, FakeSource) {
+        source.snapshots[weekStart] = TimelineSnapshot(items: items, overdue: overdue)
+        let now = iso(now)
+        let model = TimelineModel(source: source, calendar: utc, mode: .week) { now }
+        await model.activate()
+        return (model, source)
+    }
+
+    private func slot(_ dayOfMonth: Int, _ minute: Int?) -> NewItemSlot {
+        let start = day(dayOfMonth).addingTimeInterval(TimeInterval((minute ?? 0) * 60))
+        return NewItemSlot(day: day(dayOfMonth), startMinute: minute, start: start)
+    }
+
+    @Test func afterATimedItemStartsAtItsEnd() async {
+        let (model, _) = await loaded([event("a", "2026-11-10T09:00:00Z", "2026-11-10T10:00:00Z")])
+        model.select(TimelineSelection(itemID: "a", place: .grid(day: day(10))))
+
+        #expect(model.newItemSlot(after: true, dayStartHour: 7) == slot(10, 10 * 60))
+    }
+
+    @Test func beforeATimedItemEndsAtItsStart() async {
+        let (model, _) = await loaded([event("a", "2026-11-11T09:00:00Z", "2026-11-11T10:00:00Z")])
+        model.select(TimelineSelection(itemID: "a", place: .grid(day: day(11))))
+
+        #expect(model.newItemSlot(after: false, dayStartHour: 7) == slot(11, 8 * 60))
+    }
+
+    @Test func offGridTimesSnapAwayFromTheItem() async {
+        let (model, _) = await loaded([event("a", "2026-11-10T09:20:00Z", "2026-11-10T10:20:00Z")])
+        model.select(TimelineSelection(itemID: "a", place: .grid(day: day(10))))
+
+        // 後ろは終わり以降の区切り、前は始まりで終わるよう手前の区切り
+        #expect(model.newItemSlot(after: true, dayStartHour: 7) == slot(10, 10 * 60 + 30))
+        #expect(model.newItemSlot(after: false, dayStartHour: 7) == slot(10, 8 * 60 + 15))
+    }
+
+    @Test func slotsStayInsideTheDay() async {
+        let (model, _) = await loaded([
+            event("late", "2026-11-10T23:00:00Z", "2026-11-10T23:45:00Z"),
+            event("early", "2026-11-11T00:30:00Z", "2026-11-11T01:30:00Z"),
+        ])
+        model.select(TimelineSelection(itemID: "late", place: .grid(day: day(10))))
+        #expect(model.newItemSlot(after: true, dayStartHour: 7) == slot(10, 23 * 60))
+
+        model.select(TimelineSelection(itemID: "early", place: .grid(day: day(11))))
+        #expect(model.newItemSlot(after: false, dayStartHour: 7) == slot(11, 0))
+    }
+
+    @Test func afterAReminderStartsBelowItsBlock() async {
+        // リマインダーは長さが無いので、時間軸に描いた高さ（30 分）の下から
+        let (model, _) = await loaded([item("r", start: iso("2026-11-10T09:00:00Z"))])
+        model.select(TimelineSelection(itemID: "r", place: .grid(day: day(10))))
+
+        #expect(model.newItemSlot(after: true, dayStartHour: 7) == slot(10, 9 * 60 + 30))
+    }
+
+    @Test func anAllDaySelectionOpensAnAllDayItemOnThatDay() async {
+        let (model, _) = await loaded([allDay("trip", 10)])
+        model.selectNext()
+        #expect(model.selection == TimelineSelection(itemID: "trip", place: .allDay))
+
+        #expect(model.newItemSlot(after: true, dayStartHour: 7) == slot(10, nil))
+        #expect(model.newItemSlot(after: false, dayStartHour: 7) == slot(10, nil))
+    }
+
+    @Test func withoutASelectionTodayStartsAtTheNextQuarter() async {
+        let (model, _) = await loaded([])
+
+        #expect(model.newItemSlot(after: true, dayStartHour: 7) == slot(10, 10 * 60 + 15))
+        #expect(model.newItemSlot(after: false, dayStartHour: 7) == slot(10, 10 * 60 + 15))
+    }
+
+    @Test func lateAtNightTheSlotIsPulledBackIntoToday() async {
+        let (model, _) = await loaded([], now: "2026-11-10T23:50:00Z")
+
+        #expect(model.newItemSlot(after: true, dayStartHour: 7) == slot(10, 23 * 60))
+    }
+
+    @Test func anOverdueSelectionIsTreatedLikeNoSelection() async {
+        let old = item("old", start: iso("2026-11-01T09:00:00Z"))
+        let (model, _) = await loaded([], overdue: [old])
+        model.selectNext()
+        #expect(model.selection?.place == .overdue)
+
+        #expect(model.newItemSlot(after: true, dayStartHour: 7) == slot(10, 10 * 60 + 15))
+    }
+
+    @Test func withoutTodayOnScreenTheFirstDayStartsAtTheDayStart() async {
+        let (model, _) = await loaded([])
+        await model.showNext()
+
+        #expect(model.newItemSlot(after: true, dayStartHour: 7) == slot(15, 7 * 60))
+    }
+
+    @Test func theCreatedItemIsSelectedAfterReloading() async {
+        let (model, source) = await loaded([])
+        let created = event("new", "2026-11-11T13:00:00Z", "2026-11-11T14:00:00Z")
+        source.snapshots[weekStart] = TimelineSnapshot(items: [created], overdue: [])
+
+        await model.load()
+        model.selectCreated(title: "new", start: iso("2026-11-11T13:00:00Z"))
+
+        #expect(model.selection == TimelineSelection(itemID: "new", place: .grid(day: day(11))))
+    }
+
+    @Test func aCreatedAllDayItemIsSelectedInTheAllDayRow() async {
+        let (model, source) = await loaded([])
+        source.snapshots[weekStart] = TimelineSnapshot(items: [allDay("trip", 12)], overdue: [])
+
+        await model.load()
+        model.selectCreated(title: "trip", start: day(12))
+
+        #expect(model.selection == TimelineSelection(itemID: "trip", place: .allDay))
+        // 上下へ動くときに戻る列は、その日
+        #expect(model.newItemSlot(after: true, dayStartHour: 7) == slot(12, nil))
+    }
+
+    @Test func theCreatedItemIsSelectedEvenWhenAChangeReloadOvertakesTheSave() async {
+        let (model, source) = await loaded([])
+        let created = event("new", "2026-11-11T13:00:00Z", "2026-11-11T14:00:00Z")
+        source.snapshots[weekStart] = TimelineSnapshot(items: [created], overdue: [])
+        source.gate = true
+
+        // 保存後の読み直しの最中に、変更通知の読み直しが始まる
+        let afterSave = Task { await model.load() }
+        await source.waitForPending(1)
+        let onChange = Task { await model.load() }
+        await source.waitForPending(2)
+
+        source.release(at: 0)
+        await afterSave.value
+        model.selectCreated(title: "new", start: iso("2026-11-11T13:00:00Z"))
+        source.release(at: 0)
+        await onChange.value
+
+        #expect(model.selection == TimelineSelection(itemID: "new", place: .grid(day: day(11))))
+    }
+
+    @Test func aCreatedItemThatIsNotShownKeepsTheSelection() async {
+        let (model, _) = await loaded([event("a", "2026-11-10T09:00:00Z", "2026-11-10T10:00:00Z")])
+        model.select(TimelineSelection(itemID: "a", place: .grid(day: day(10))))
+
+        await model.load()
+        model.selectCreated(title: "hidden", start: iso("2026-11-11T13:00:00Z"))
+        await model.load()
+
+        #expect(model.selection == TimelineSelection(itemID: "a", place: .grid(day: day(10))))
+    }
+}
