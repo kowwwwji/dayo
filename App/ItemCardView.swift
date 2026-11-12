@@ -75,6 +75,8 @@ struct ItemCardClick {
 
 #if os(macOS)
 /// 項目の情報カード。中身を見るだけで、書き換える欄は無い（直すのは鉛筆から開く詳細編集）。
+/// リンクとボタンは AppKit のフォーカスを受けない。「キーボードでの操作」が有効だと、開いた瞬間に最初のリンクへ枠が付いてしまうため。
+/// リンクを選ぶのは tab（`ItemCards.focusedLink`）で、枠もそのときだけ付ける。
 struct ItemCardView: View {
     let item: TimelineItem
     /// tab で選んでいるリンク。その行に枠を付ける
@@ -115,6 +117,7 @@ struct ItemCardView: View {
                                 .multilineTextAlignment(.leading)
                         }
                         .linkFocus(url == focusedLink)
+                        .focusable(false)
                         .help("Google マップで開く")
                         .accessibilityLabel("\(location) を Google マップで開く")
                     }
@@ -127,6 +130,7 @@ struct ItemCardView: View {
                                 .truncationMode(.middle)
                         }
                         .linkFocus(url == focusedLink)
+                        .focusable(false)
                         .help(url.absoluteString)
                     }
                 }
@@ -134,6 +138,7 @@ struct ItemCardView: View {
                     row("video") {
                         Link("ビデオ会議に参加", destination: url)
                             .linkFocus(url == focusedLink)
+                            .focusable(false)
                     }
                 }
                 row(item.kind == .event ? "calendar" : "list.bullet") {

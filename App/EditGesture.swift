@@ -93,8 +93,11 @@ private struct ClickCatcher: NSViewRepresentable {
             }
         }
 
-        /// 押した所からほとんど動かさずに離したら、ダブルクリックの間隔だけ待ってカードを出す。
+        /// 押した所からほとんど動かさずに離したら、少し待ってカードを出す。
         /// すぐ出すと、ダブルクリック（新規登録）の 1 回目でカードが一瞬出てしまう。
+        /// 待つのは 0.25 秒（システムのダブルクリックの間隔がそれより短ければ、その間隔）。間隔いっぱい（既定 0.5 秒）待つと、
+        /// 普通のクリックのカードが遅く感じる。ダブルクリックの 2 回目は、1 回目を離してからふつう 0.2 秒以内に押される。
+        private static let cardDelay = min(NSEvent.doubleClickInterval, 0.25)
         private func openCardIfClicked(_ event: NSEvent) {
             guard let press = cardPress else { return }
             cardPress = nil
@@ -105,7 +108,7 @@ private struct ClickCatcher: NSViewRepresentable {
                 self?.card?.open()
             }
             pendingOpen = open
-            DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: open)
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.cardDelay, execute: open)
         }
 
         deinit {
