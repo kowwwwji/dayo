@@ -56,3 +56,6 @@
 - 情報カードが出ている間のキーは、カードのウインドウ宛てに届く。タイムラインのキーを足すときは、カードを出したままでも効くかを確かめる
 - `RecurrenceSpec` には曜日・日を補う関数が 2 つある（将来回の展開用の `filled`、比較と説明用の `normalized`）。補い方が違うので、まとめない
 - この Mac は「キーボードナビゲーション」が有効（`AppleKeyboardUIMode = 2`）。ポップオーバーを開くと最初のボタンやリンクに枠が付くので、自前でフォーカスを扱う所は `.focusable(false)` にする
+- `-demo YES`（Debug のみ）で架空の予定・リマインダーを出す。EventKit に触れないので、変更キーの確認やスクリーンショットはこれで行える
+- `open -n -g` のウインドウは 2 枚目の画面（1 倍）に開くことがある。大きさは `osascript` の System Events で `set size of window 1` で変えられる（別の画面への移動は戻されることがある）。変えると Debug の「NSWindow Frame …」が保存されるので、終わったら元の値に戻す
+- DayoCore でも `#if DEBUG` は Xcode の構成に従う（Release には入らない）

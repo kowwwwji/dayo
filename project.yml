@@ -1,6 +1,8 @@
 name: Dayo
 options:
   bundleIdPrefix: com.kowwwwji
+  # 日本語のアプリとして出す。en のままだと OS が英語の書式（日付など）とメニューを使い、App Store の言語欄も英語になる
+  developmentLanguage: ja
   deploymentTarget:
     macOS: "14.0"
     iOS: "17.0"
@@ -26,6 +28,9 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.productivity
+        # 標準の暗号（HTTPS など OS の機能）しか使わない申告。無いと App Store Connect で提出のたびに聞かれる
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleLocalizations: [ja]
         UILaunchScreen: {}
     settings:
       base:
@@ -43,6 +48,11 @@ targets:
         Debug:
           # 開発用のビルドは、インストールしたアプリと設定・許可を分ける（確認用の起動が普段使いの設定を書き換えないように）
           PRODUCT_BUNDLE_IDENTIFIER: com.kowwwwji.Dayo.dev
+        Release:
+          # App Store 向けの署名に使うチーム。普段の Release ビルド（scripts/install.sh）は上のアドホック署名のまま作り、
+          # Apple の証明書での署名は scripts/archive.sh が上書きして行う（証明書の無い Mac でも install.sh が動くように）
+          DEVELOPMENT_TEAM: ""
+          ENABLE_HARDENED_RUNTIME: YES
 
 schemes:
   Dayo:

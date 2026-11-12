@@ -7,7 +7,7 @@ struct DayoApp: App {
     @State private var quickInput: QuickInputModel
     @State private var quickInputFocus = QuickInputFocus()
     @State private var dateJump = DateJumpRequest()
-    private let source = EventKitRepository()
+    private let source: CalendarSource = Self.makeSource()
     #if os(macOS)
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     #endif
@@ -60,6 +60,14 @@ struct DayoApp: App {
     }
 
     private static let lastCreatedKindKey = "lastCreatedKind"
+
+    /// 起動引数 `-demo YES` なら架空の中身を出す（App Store のスクリーンショット用）。提出するビルドには入らない。
+    private static func makeSource() -> CalendarSource {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "demo") { return DemoSource() }
+        #endif
+        return EventKitRepository()
+    }
 
     var body: some Scene {
         WindowGroup {

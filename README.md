@@ -4,6 +4,7 @@
 データは Mac に登録したアカウントのものを読み書きするだけで、独自のサーバーや保存先は持たない。
 
 - 設計と画面・キー操作の仕様: [docs/DESIGN.md](docs/DESIGN.md)
+- Mac App Store への提出: [docs/app-store/README.md](docs/app-store/README.md)
 
 ## Mac に入れる
 

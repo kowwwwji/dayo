@@ -5,6 +5,7 @@
 # ビルド成果物・個人設定
 .build/
 DerivedData/
+build/
 xcuserdata/
 .swiftpm/
 .DS_Store
