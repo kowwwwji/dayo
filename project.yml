@@ -43,7 +43,9 @@ targets:
         # Mac は App Sandbox 下で EventKit を使うため entitlements が必須。署名 ID が無くてもアドホックで動かす。
         CODE_SIGN_ENTITLEMENTS[sdk=macosx*]: App/Dayo.entitlements
         CODE_SIGN_IDENTITY[sdk=macosx*]: "-"
-        # iOS 実機は DEVELOPMENT_TEAM を設定するまで不可（シミュレータのみ）
+        # iPhone 実機へは無料の Apple ID（Personal Team）で署名して入れる（scripts/install-iphone.sh）。
+        # Mac 向けには効かせない（Mac は上のアドホック署名と、App Store 向けの Release の DEVELOPMENT_TEAM が受け持つ）
+        DEVELOPMENT_TEAM[sdk=iphoneos*]: 85Z44QYZL3
       configs:
         Debug:
           # 開発用のビルドは、インストールしたアプリと設定・許可を分ける（確認用の起動が普段使いの設定を書き換えないように）

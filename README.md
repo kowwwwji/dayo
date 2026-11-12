@@ -28,6 +28,18 @@ Apple の開発者登録をしていないので、その Mac だけで通用す
 ビルド済みの `Dayo.app` を別の Mac へコピーして使うこともできるが、公証を受けていないので macOS が起動を止める
 （「システム設定 → プライバシーとセキュリティ」で手で許可する）。その Mac でビルドするほうが手間が少ない。
 
+## iPhone に入れる
+
+無料の Apple ID（Personal Team）で署名して、つないだ iPhone へ入れる。最初に Xcode でその Apple ID にサインインし、
+iPhone の「設定 → プライバシーとセキュリティ → デベロッパモード」をオンにしておく。
+
+```sh
+scripts/install-iphone.sh   # iPhone をつないでロックを解除してから
+```
+
+初回は iPhone の「設定 → 一般 → VPN とデバイス管理」で開発元を信頼する。無料の署名は 7 日で切れるので、
+切れたら同じコマンドで入れ直す。チーム ID は `project.yml` の `DEVELOPMENT_TEAM[sdk=iphoneos*]`（別の Apple ID で入れるなら書き換える）。
+
 ## Mac ごとに用意するもの
 
 - **アカウント**: 「システム設定 → インターネットアカウント」に Google と iCloud を追加する。Dayo はそこに同期された予定とリマインダーを表示する。
