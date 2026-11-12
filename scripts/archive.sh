@@ -13,8 +13,13 @@ EXPORT_DIR="build/AppStore"
 
 xcodegen generate
 
-team="$(xcodebuild -project Dayo.xcodeproj -scheme Dayo -configuration Release -destination 'generic/platform=macOS' \
-    -showBuildSettings 2>/dev/null | awk '$1 == "DEVELOPMENT_TEAM" { print $3 }')"
+# 一覧を受けてから探す（パイプのまま読むと、pipefail の下で失敗が見えなくなる）
+settings="$(xcodebuild -project Dayo.xcodeproj -target Dayo -configuration Release -showBuildSettings)"
+team="$(awk '$1 == "DEVELOPMENT_TEAM" && $3 != "" { print $3 }' <<< "$settings" | head -n 1)"
+if [ -n "$team" ] && ! [[ "$team" =~ ^[A-Z0-9]{10}$ ]]; then
+    echo "project.yml の DEVELOPMENT_TEAM「${team}」はチーム ID（英大文字と数字 10 桁）の形ではありません。" >&2
+    exit 1
+fi
 
 rm -rf "$ARCHIVE" "$EXPORT_DIR"
 
@@ -32,7 +37,7 @@ xcodebuild -project Dayo.xcodeproj -scheme Dayo -configuration Release \
     -destination 'generic/platform=macOS' -archivePath "$ARCHIVE" -quiet -allowProvisioningUpdates \
     archive CODE_SIGN_IDENTITY="Apple Development" DEVELOPMENT_TEAM="$team"
 
-options="$(mktemp -t dayo-export).plist"
+options="$(mktemp -t dayo-export.XXXXXX)"
 trap 'rm -f "$options"' EXIT
 cat > "$options" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
