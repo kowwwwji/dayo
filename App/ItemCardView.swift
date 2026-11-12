@@ -12,23 +12,41 @@ struct ItemCardTarget: Equatable {
 @Observable
 final class ItemCards {
     private(set) var target: ItemCardTarget?
+    /// tab で選んでいるカードのリンク。return で開く。カードが別の項目へ移ると外れる
+    var focusedLink: URL?
     /// ポップオーバーが自分で閉じたカードと、その時刻
     @ObservationIgnored private var dismissal: (target: ItemCardTarget, at: Date)?
 
     func show(_ target: ItemCardTarget) {
+        if self.target != target { focusedLink = nil }
         self.target = target
         dismissal = nil
     }
 
     func close() {
         target = nil
+        focusedLink = nil
     }
 
     /// ポップオーバーが自分で閉じた（カードの外をクリックした）。
     func popoverClosed(_ target: ItemCardTarget) {
         guard self.target == target else { return }
         self.target = nil
+        focusedLink = nil
         dismissal = (target, .now)
+    }
+
+    /// カードのリンクを tab / shift+tab で選ぶ。端まで行ったら選択を外し、もう一度で反対の端から選ぶ。
+    /// 戻り値はリンクがあったか（無ければキーを流す）。
+    func moveLinkFocus(in links: [URL], by step: Int) -> Bool {
+        guard target != nil, !links.isEmpty else { return false }
+        guard let current = focusedLink, let index = links.firstIndex(of: current) else {
+            focusedLink = step > 0 ? links.first : links.last
+            return true
+        }
+        let next = index + step
+        focusedLink = links.indices.contains(next) ? links[next] : nil
+        return true
     }
 
     /// その項目のカードを出しているか、たったいまポップオーバーが閉じたところか。
@@ -59,6 +77,8 @@ struct ItemCardClick {
 /// 項目の情報カード。中身を見るだけで、書き換える欄は無い（直すのは鉛筆から開く詳細編集）。
 struct ItemCardView: View {
     let item: TimelineItem
+    /// tab で選んでいるリンク。その行に枠を付ける
+    var focusedLink: URL?
     let onEdit: () -> Void
     let onToggle: () -> Void
     let onDelete: () -> Void
@@ -94,6 +114,7 @@ struct ItemCardView: View {
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                         }
+                        .linkFocus(url == focusedLink)
                         .help("Google マップで開く")
                         .accessibilityLabel("\(location) を Google マップで開く")
                     }
@@ -105,12 +126,14 @@ struct ItemCardView: View {
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
+                        .linkFocus(url == focusedLink)
                         .help(url.absoluteString)
                     }
                 }
                 if let url = summary.conferenceURL {
                     row("video") {
                         Link("ビデオ会議に参加", destination: url)
+                            .linkFocus(url == focusedLink)
                     }
                 }
                 row(item.kind == .event ? "calendar" : "list.bullet") {
@@ -186,6 +209,20 @@ struct ItemCardView: View {
                 .accessibilityHidden(true)
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+extension View {
+    /// tab で選んでいるリンクの枠。文字に重ならないよう外側に描く。
+    func linkFocus(_ isFocused: Bool) -> some View {
+        overlay {
+            if isFocused {
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .padding(-3)
+                    .allowsHitTesting(false)
+            }
         }
     }
 }

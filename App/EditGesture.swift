@@ -53,6 +53,8 @@ private struct ClickCatcher: NSViewRepresentable {
         private var monitor: Any?
         /// 押した位置。離したときにカードを出すクリックなら入っている
         private var cardPress: CGPoint?
+        /// 離したあと、ダブルクリックにならなかったら出すカード
+        private var pendingOpen: DispatchWorkItem?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -67,6 +69,9 @@ private struct ClickCatcher: NSViewRepresentable {
                     return event
                 }
                 self.cardPress = nil
+                // 次に押されたら、待っていたカードは出さない（ダブルクリックの 2 回目、別の項目のクリック）
+                self.pendingOpen?.cancel()
+                self.pendingOpen = nil
                 guard self.catches(event) else { return event }
                 // 選択すると、出ているカードは選択に付いてくる。出ていたかは先に見ておく
                 let wasShowingCard = self.card?.isShowing() == true
@@ -88,16 +93,23 @@ private struct ClickCatcher: NSViewRepresentable {
             }
         }
 
-        /// 押した所からほとんど動かさずに離したら、カードを出す。
+        /// 押した所からほとんど動かさずに離したら、ダブルクリックの間隔だけ待ってカードを出す。
+        /// すぐ出すと、ダブルクリック（新規登録）の 1 回目でカードが一瞬出てしまう。
         private func openCardIfClicked(_ event: NSEvent) {
             guard let press = cardPress else { return }
             cardPress = nil
             let moved = hypot(event.locationInWindow.x - press.x, event.locationInWindow.y - press.y)
             guard let window, event.window === window, moved < 3 else { return }
-            card?.open()
+            let open = DispatchWorkItem { [weak self] in
+                self?.pendingOpen = nil
+                self?.card?.open()
+            }
+            pendingOpen = open
+            DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: open)
         }
 
         deinit {
+            pendingOpen?.cancel()
             removeMonitor()
         }
 

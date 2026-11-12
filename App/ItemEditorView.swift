@@ -136,6 +136,7 @@ private struct ItemEditorPresenter: ViewModifier {
             if let card = editing.card {
                 ItemCardView(
                     item: item,
+                    focusedLink: card.cards.focusedLink,
                     onEdit: { editing.open(item, at: anchor) },
                     onToggle: { card.onToggle(item) },
                     onDelete: { card.onDelete(item) }

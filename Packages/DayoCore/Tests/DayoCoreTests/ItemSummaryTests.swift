@@ -125,6 +125,25 @@ private func summary(_ item: TimelineItem) -> ItemSummary {
         #expect((summary(item(url: URL(string: text))).linkURL != nil) == offered)
     }
 
+    // MARK: - リンクの並び
+
+    /// カードで tab が選んでいく順。画面の並び（場所 → URL → ビデオ会議）と同じ。
+    @Test func theLinksFollowTheOrderOfTheRows() {
+        let result = summary(item(
+            notes: Self.invitation("https://meet.google.com/abc-defg-hij"),
+            location: "会議室 A",
+            url: URL(string: "https://example.com/a")
+        ))
+        #expect(result.links == [result.locationMapURL, result.linkURL, result.conferenceURL].compactMap { $0 })
+        #expect(result.links.count == 3)
+    }
+
+    @Test func rowsWithoutALinkAreSkipped() {
+        let result = summary(item(location: "会議室 A", url: URL(string: "mailto:a@example.com")))
+        #expect(result.links == [result.locationMapURL].compactMap { $0 })
+        #expect(summary(item()).links.isEmpty)
+    }
+
     // MARK: - メモとビデオ会議
 
     private static let separator = "-::~:~::~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~::~:~::-"

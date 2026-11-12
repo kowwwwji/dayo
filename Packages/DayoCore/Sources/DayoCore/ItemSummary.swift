@@ -31,6 +31,11 @@ public struct ItemSummary: Equatable {
         notes = body.isEmpty ? nil : body
     }
 
+    /// 押して開けるリンクを、画面の並び（場所 → URL → ビデオ会議）で。キーでリンクを選ぶ順に使う。
+    public var links: [URL] {
+        [locationMapURL, linkURL, conferenceURL].compactMap { $0 }
+    }
+
     // MARK: - リンク
 
     static func trimmedLocation(_ location: String?) -> String {

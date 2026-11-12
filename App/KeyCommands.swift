@@ -12,6 +12,9 @@ enum TimelineKey {
     case toggleCompleted
     /// 選択中の項目の情報カードを出す / 閉じる
     case toggleCard
+    /// 情報カードの次 / 前のリンクを選ぶ（tab / shift+tab）
+    case nextLink
+    case previousLink
     case openEditor
     case clearSelection
     case showPrevious
@@ -63,6 +66,11 @@ enum TimelineKey {
         case .rightArrow: "l"
         default: event.charactersIgnoringModifiers?.lowercased()
         }
+        // shift+tab は配列によって back tab の文字で届く
+        if event.specialKey == .backTab || (event.specialKey == .tab && modifiers == .shift) {
+            self = .previousLink
+            return
+        }
         if modifiers == .shift {
             switch character {
             case "j": self = .moveLater
@@ -92,6 +100,7 @@ enum TimelineKey {
         case "d", "\u{7f}", "\u{F728}": self = .deleteSelection
         case " ": self = .toggleCard
         case "x": self = .toggleCompleted
+        case "\t": self = .nextLink
         case "\r", "\u{3}": self = .openEditor
         case "\u{1b}": self = .clearSelection
         default: return nil
@@ -225,8 +234,9 @@ struct KeyHelpView: View {
             ("esc", "情報カードを閉じる / 選択を解除"),
         ]),
         Section(title: "選択中の項目", rows: [
-            ("return", "編集を開く"),
+            ("return", "編集を開く（カードでリンクを選んでいれば、それを開く）"),
             ("space", "情報カードを出す / 閉じる"),
+            ("tab / ⇧tab", "カードの場所・URL・ビデオ会議を選ぶ"),
             ("x", "リマインダーを完了 / 未完了"),
             ("⇧j or ⇧↓ / ⇧k or ⇧↑", "15 分遅く / 早く"),
             ("⇧h or ⇧← / ⇧l or ⇧→", "前 / 次の日へ"),

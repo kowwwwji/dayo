@@ -121,7 +121,16 @@ struct DayTimelineView: View {
             } else {
                 return false
             }
+        case .nextLink, .previousLink:
+            // カードが出ていなければ流す（入力欄などの tab の移動を奪わない）
+            guard cards.target != nil, let item = model.selectedItem else { return false }
+            return cards.moveLinkFocus(in: ItemSummary(item).links, by: key == .nextLink ? 1 : -1)
         case .openEditor:
+            // カードでリンクを選んでいれば、編集ではなくそのリンクを開く
+            if cards.target != nil, let link = cards.focusedLink {
+                NSWorkspace.shared.open(link)
+                return true
+            }
             guard let selection = model.selection, let item = model.selectedItem else { return false }
             editing.open(item, at: selection.place.editorAnchor)
         case .toggleHelp: showsKeyHelp.toggle()
