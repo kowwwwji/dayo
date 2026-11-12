@@ -638,7 +638,9 @@ private struct GridItemView: View {
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .contentShape(Rectangle())
             .onNewItemGesture(perform: onNewItem)
-            .onItemClick(select: onSelect) { editing.open(item, at: anchor) }
+            .onItemClick(select: onSelect, card: editing.cardClick(for: item, at: anchor)) {
+                editing.open(item, at: anchor)
+            }
             .itemEditor(for: item, editing, at: anchor)
         case .reminder:
             // 余白は外に付けず中身の側に持たせる。丸以外の全面でダブルクリックを受けるため
@@ -674,7 +676,9 @@ private struct GridItemView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
             .contentShape(Rectangle())
-            .onItemClick(select: onSelect) { editing.open(item, at: anchor) }
+            .onItemClick(
+                select: onSelect, card: editing.cardClick(for: item, at: anchor), cardInset: checkCircleWidth
+            ) { editing.open(item, at: anchor) }
             .itemEditor(for: item, editing, at: anchor)
         }
     }
