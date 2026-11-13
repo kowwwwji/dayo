@@ -234,7 +234,17 @@ struct DayTimelineView: View {
     private var content: some View {
         switch model.access {
         case .granted:
+            #if os(macOS)
+            VStack(spacing: 0) {
+                if model.needsAccount {
+                    AccountPromptBar()
+                    Divider()
+                }
+                sections
+            }
+            #else
             sections
+            #endif
         case .denied, .restricted:
             ContentUnavailableView(
                 "カレンダーとリマインダーへのアクセスが必要です",

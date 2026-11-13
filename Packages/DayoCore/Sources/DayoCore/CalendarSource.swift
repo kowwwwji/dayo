@@ -99,13 +99,18 @@ public struct CalendarInfo: Equatable, Identifiable {
     public var color: CGColor
     /// アカウント名（iCloud / Google など）。一覧をアカウントごとに分けるのに使う。
     public var accountName: String
+    /// インターネットアカウント（iCloud / Google など）のものか。「このMac」や照会カレンダーは false。
+    public var isFromAccount: Bool
 
-    public init(id: String, name: String, kind: ItemKind, color: CGColor, accountName: String) {
+    public init(
+        id: String, name: String, kind: ItemKind, color: CGColor, accountName: String, isFromAccount: Bool = true
+    ) {
         self.id = id
         self.name = name
         self.kind = kind
         self.color = color
         self.accountName = accountName
+        self.isFromAccount = isFromAccount
     }
 }
 
