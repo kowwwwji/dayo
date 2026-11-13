@@ -419,9 +419,10 @@ struct DayTimelineView: View {
         #endif
     }
 
-    /// 期限切れ欄の 1 行。
+    /// 期限切れ欄の 1 行。Mac ではタイムラインへドラッグして期日を付け直せる。
+    @ViewBuilder
     private func overdueRow(_ item: TimelineItem) -> some View {
-        TimelineRow(
+        let row = TimelineRow(
             item: item,
             editing: editing,
             anchor: TimelineSelection.Place.overdue.editorAnchor,
@@ -430,6 +431,13 @@ struct DayTimelineView: View {
         ) {
             Task { await model.toggleCompleted(item) }
         }
+        #if os(macOS)
+        row.modifier(OverdueDragModifier(item: item, board: board) { day, minute in
+            change(item) { await model.reschedule(item, toDay: day, startMinute: minute, span: $0) }
+        })
+        #else
+        row
+        #endif
     }
 }
 
