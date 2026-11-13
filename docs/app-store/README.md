@@ -1,7 +1,7 @@
 # Mac App Store への提出
 
-Mac 版を、個人の開発者登録で、無料・日本だけに出す。貼る内容は [listing.md](listing.md)、
-サポートとプライバシーポリシーのページは [site/](site/)（ソースを見せないため、このリポジトリとは別の公開用リポジトリで GitHub Pages に出す）。
+Mac 版を、個人の開発者登録で、無料・日本だけに出すための手順。開発者登録の年会費がかかるため、今は出していない（配布は Releases の dmg）。
+貼る内容は [listing.md](listing.md)、サポートとプライバシーポリシーのページは [site/](site/)（GitHub Pages で出す）。
 
 ## 最初の 1 回
 
@@ -12,7 +12,7 @@ Mac 版を、個人の開発者登録で、無料・日本だけに出す。貼�
    Description は `Dayo`、Bundle ID は Explicit で `com.kowwwwji.Dayo`、Capabilities は何も付けない。
 4. **App を作る**: App Store Connect → アプリ → ＋ → 新規 App。プラットフォームは macOS、名前は [listing.md](listing.md)、
    主言語は日本語、Bundle ID は 3. のもの、SKU は `dayo-mac`（自分で区別できれば何でもよい）、ユーザアクセスは制限なし。
-5. **サポートのページを出す**: [site/](site/) の 3 ファイルを公開用リポジトリに置き、GitHub Pages で公開する。
+5. **サポートのページを出す**: [site/](site/) の 3 ファイルを GitHub Pages で公開する。
    URL が [listing.md](listing.md) のものと変わったら、そちらも直す。
 6. **価格と配信**: 「価格および配信状況」で無料、配信する国は日本だけ。
 

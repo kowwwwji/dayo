@@ -68,10 +68,10 @@ Dayo は独自のサーバーを持たず、予定や Todo を外部へ送りま
 
 ### サポート URL / プライバシーポリシー URL
 
-- サポート: `https://kowwwwji.github.io/dayo-support/`
-- プライバシーポリシー: `https://kowwwwji.github.io/dayo-support/privacy.html`
+[site/](site/) を GitHub Pages で出した URL（まだ出していない）。
 
-公開用リポジトリの名前を変えたら、ここと [site/](site/) のリンクも合わせる。
+- サポート: `<Pages の URL>/`
+- プライバシーポリシー: `<Pages の URL>/privacy.html`
 
 ### スクリーンショット（2880×1800）
 

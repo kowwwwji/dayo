@@ -1,6 +1,6 @@
 # Dayo
 
-予定（Googleカレンダー）とTodo（iCloudリマインダー）を1本の時間軸で確認・入力できる、Mac + iPhone向けSwiftUIアプリ。
+予定（Googleカレンダー）とTodo（iCloudリマインダー）を1本の時間軸で確認・入力できる、Mac向けSwiftUIアプリ（iOS もビルドは通すが、iPhone 版は作り込まない）。
 
 - 設計書: `docs/DESIGN.md`（判断に迷ったらまずここを読む）
 - データは EventKit 経由で読み書きするだけ。独自サーバー・独自の永続化・通知処理は作らない
@@ -13,7 +13,7 @@
 
 - `xcodegen generate` で `Dayo.xcodeproj` を生成する（`project.yml` が正。`.xcodeproj` と `App/Info.plist` は生成物で git 管理外）
 - ドメイン層は `Packages/DayoCore`。テストは `cd Packages/DayoCore && swift test`（Swift Testing）
-- アプリは `xcodebuild -project Dayo.xcodeproj -scheme Dayo -destination 'platform=macOS' -derivedDataPath DerivedData build`。起動は `open DerivedData/Build/Products/Debug/Dayo.app`。Mac はアドホック署名、iOS は `DEVELOPMENT_TEAM` 未設定のためシミュレータのみ
+- アプリは `xcodebuild -project Dayo.xcodeproj -scheme Dayo -destination 'platform=macOS' -derivedDataPath DerivedData build`。起動は `open DerivedData/Build/Products/Debug/Dayo.app`。Mac はアドホック署名。iPhone 実機へは `scripts/install-iphone.sh`（無料の Apple ID で署名）
 - 普段使いのアプリを入れる・更新するのは `scripts/install.sh`（手順と署名の理由は `README.md`）
 - Debug ビルドの Bundle ID は `com.kowwwwji.Dayo.dev`。入れたアプリ（`com.kowwwwji.Dayo`）とは設定も許可も別なので、確認用の起動で普段使いの設定は変わらない
 - アイコンの図柄は `scripts/make-icon.swift`。変えたら `scripts/make-appiconset.sh` でアセットを作り直す
