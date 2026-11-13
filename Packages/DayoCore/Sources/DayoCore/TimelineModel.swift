@@ -438,6 +438,19 @@ public final class TimelineModel {
         await apply(ItemDraft(makingAllDay: item, on: calendar.startOfDay(for: day)), to: item, span: span)
     }
 
+    /// 期限切れ欄のリマインダーをタイムラインへ落とした。落とした日時を新しい期日にする。
+    /// `minute` が nil なら終日欄へ落とした（その日の時刻なしの期日）。
+    public func reschedule(_ item: TimelineItem, toDay day: Date, startMinute minute: Int?, span: EditSpan) async {
+        guard isChangeable(item), item.start != nil else { return }
+        let dayStart = calendar.startOfDay(for: day)
+        guard let minute else {
+            await apply(ItemDraft(moving: item, to: dayStart, isAllDay: true), to: item, span: span)
+            return
+        }
+        guard let start = calendar.date(byAdding: .minute, value: minute, to: dayStart) else { return }
+        await apply(ItemDraft(moving: item, to: start), to: item, span: span)
+    }
+
     /// 予定の長さを変えた（下端のドラッグ）。開始はそのままで、終了を `end` にする。
     /// 最短 15 分、終わりのある日の 24:00 まで。リマインダーと終日の項目には長さが無いので何もしない。
     public func resize(_ item: TimelineItem, toEnd end: Date, span: EditSpan) async {
@@ -820,7 +833,8 @@ public final class TimelineModel {
         let updated = self.item(item, rescheduledBy: draft)
         let others = (timeline.allDay + timeline.timed).filter { $0.id != item.id }
         // 期日の無い項目は `DayTimeline` が時間軸から落とすので、一覧の側へ入れる
-        timeline = DayTimeline(items: others + [updated], overdue: timeline.overdue)
+        // 期限切れ欄から動かしたものは、読み直しを待たずに欄から外す（まだ過ぎた日時なら、読み直しで戻る）
+        timeline = DayTimeline(items: others + [updated], overdue: timeline.overdue.filter { $0.id != item.id })
         undated = (undated.filter { $0.id != item.id } + (updated.start == nil ? [updated] : []))
             .sorted(by: Self.listThenTitle)
         layOut()

@@ -3320,3 +3320,98 @@ extension NewItemSlotTests {
         #expect(model.newItemSlot(after: false, dayStartHour: 7) == slot(10, 8 * 60))
     }
 }
+
+@MainActor
+@Suite struct TimelineModelOverdueDropTests {
+    /// 2026-11-10 は火曜。週（日曜始まり）は 11-08 〜 11-14。期限切れは週より前（11-01）のもの。
+    let today = iso("2026-11-10T00:00:00Z")
+    let weekStart = iso("2026-11-08T00:00:00Z")
+
+    private func day(_ dayOfMonth: Int) -> Date {
+        iso("2026-11-\(String(format: "%02d", dayOfMonth))T00:00:00Z")
+    }
+
+    private func todo(_ id: String, _ start: String, allDay: Bool = false) -> TimelineItem {
+        TimelineItem(
+            id: id, calendarItemIdentifier: id, kind: .reminder, title: id, start: iso(start), end: nil,
+            isAllDay: allDay, isCompleted: false, sourceName: "home", accountName: "",
+            color: CGColor(gray: 0, alpha: 1), recurrence: nil, calendarIdentifier: "home"
+        )
+    }
+
+    private func loaded(overdue: [TimelineItem]) async -> (TimelineModel, FakeSource) {
+        let source = FakeSource()
+        source.snapshots[weekStart] = TimelineSnapshot(items: [], overdue: overdue)
+        let model = TimelineModel(source: source, calendar: utc, mode: .week) { self.today }
+        await model.activate()
+        return (model, source)
+    }
+
+    @Test func droppingAnOverdueReminderOnTheGridMovesItsDueDateThere() async {
+        let late = todo("late", "2026-11-01T09:00:00Z")
+        let (model, source) = await loaded(overdue: [late, todo("other", "2026-11-02T09:00:00Z")])
+        source.gate = true
+
+        let drop = Task { await model.reschedule(late, toDay: day(11), startMinute: 600, span: .thisOccurrence) }
+        await source.waitForPending(1)
+
+        // 保存後の読み直しを待たずに、期限切れから外れて時間軸に出る
+        #expect(model.timeline.overdue.map(\.id) == ["other"])
+        #expect(model.placements.map(\.item.start) == [iso("2026-11-11T10:00:00Z")])
+        #expect(source.updates.count == 1)
+        #expect(source.updates[0].item == late)
+        #expect(source.updates[0].draft.start == iso("2026-11-11T10:00:00Z"))
+        #expect(source.updates[0].draft.isAllDay == false)
+
+        source.release(at: 0)
+        await drop.value
+    }
+
+    @Test func droppingAnOverdueReminderWithoutATimeOnTheGridGivesItThatTime() async {
+        let late = todo("late", "2026-11-01T00:00:00Z", allDay: true)
+        let (model, source) = await loaded(overdue: [late])
+
+        await model.reschedule(late, toDay: day(12), startMinute: 15 * 60, span: .thisOccurrence)
+
+        #expect(source.updates[0].draft.start == iso("2026-11-12T15:00:00Z"))
+        #expect(source.updates[0].draft.isAllDay == false)
+        #expect(source.updates[0].draft.kind == .reminder)
+    }
+
+    @Test(arguments: [false, true])
+    func droppingAnOverdueReminderOnTheAllDayRowMakesThatDayItsDueDate(allDay: Bool) async {
+        let late = todo("late", allDay ? "2026-11-01T00:00:00Z" : "2026-11-01T09:00:00Z", allDay: allDay)
+        let (model, source) = await loaded(overdue: [late])
+        source.gate = true
+
+        let drop = Task { await model.reschedule(late, toDay: day(12), startMinute: nil, span: .thisOccurrence) }
+        await source.waitForPending(1)
+
+        #expect(model.timeline.overdue.isEmpty)
+        #expect(model.allDaySpans.map(\.item.start) == [day(12)])
+        #expect(source.updates[0].draft.start == day(12))
+        #expect(source.updates[0].draft.isAllDay)
+
+        source.release(at: 0)
+        await drop.value
+    }
+
+    @Test func undoingTheDropPutsTheOldDueDateBack() async {
+        let late = todo("late", "2026-11-01T09:00:00Z")
+        let (model, source) = await loaded(overdue: [late])
+        let moved = todo("late", "2026-11-11T10:00:00Z")
+        source.snapshots[weekStart] = TimelineSnapshot(items: [moved], overdue: [])
+        await model.reschedule(late, toDay: day(11), startMinute: 600, span: .thisOccurrence)
+        #expect(model.canUndo)
+
+        source.snapshots[weekStart] = TimelineSnapshot(items: [], overdue: [late])
+        await model.undo()
+
+        #expect(source.updates.count == 2)
+        #expect(source.updates[1].item == moved)
+        #expect(source.updates[1].draft.start == iso("2026-11-01T09:00:00Z"))
+        #expect(source.updates[1].draft.isAllDay == false)
+        #expect(model.timeline.overdue.map(\.id) == ["late"])
+        #expect(!model.canUndo)
+    }
+}
