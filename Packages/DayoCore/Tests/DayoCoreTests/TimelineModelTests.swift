@@ -2833,6 +2833,32 @@ private func item(_ id: String, start: Date? = nil) -> TimelineItem {
         while model.calendars.count < 4 { await Task.yield() }
         #expect(model.calendars.map(\.id) == ["work", "busy", "home", "new"])
     }
+
+    @Test func anAccountIsAskedForOnlyAfterLoadingFindsNoCalendarOfAnAccount() async {
+        let source = source()
+        source.calendarList = [
+            CalendarInfo(id: "local", name: "local", kind: .event, color: CGColor(gray: 0, alpha: 1),
+                         accountName: "このMac", isFromAccount: false),
+        ]
+        let model = TimelineModel(source: source, calendar: utc, mode: .week) { self.today }
+        // 読み込む前は分からないので、案内を出さない
+        #expect(!model.needsAccount)
+
+        await model.activate()
+        #expect(model.needsAccount)
+
+        // システム設定でアカウントを足すと、変更の通知で読み直して案内が消える
+        source.calendarList.append(info("google"))
+        source.emitChange()
+        while model.needsAccount { await Task.yield() }
+        #expect(model.calendars.map(\.id) == ["local", "google"])
+    }
+
+    @Test func noAccountIsAskedForWhenACalendarOfAnAccountIsLoaded() async {
+        let model = TimelineModel(source: source(), calendar: utc, mode: .week) { self.today }
+        await model.activate()
+        #expect(!model.needsAccount)
+    }
 }
 
 @MainActor

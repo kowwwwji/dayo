@@ -136,12 +136,16 @@ public final class EventKitRepository: CalendarSource {
                     name: $0.title,
                     kind: kind,
                     color: $0.cgColor ?? TimelineItem.fallbackColor,
-                    accountName: $0.source?.title ?? ""
+                    accountName: $0.source?.title ?? "",
+                    isFromAccount: Self.accountSourceTypes.contains($0.source?.sourceType ?? .local)
                 )
             }
         }
         return all(.event, as: .event) + all(.reminder, as: .reminder)
     }
+
+    /// インターネットアカウントの取得元。iCloud と Google は CalDAV、古い iCloud は MobileMe として届く。
+    private static let accountSourceTypes: Set<EKSourceType> = [.calDAV, .exchange, .mobileMe]
 
     /// 画面で扱うカレンダーか。連絡先の誕生日を並べる OS の誕生日カレンダーは扱わない（予定ではないため）。
     static func isShown(_ calendar: EKCalendar?) -> Bool {

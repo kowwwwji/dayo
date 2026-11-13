@@ -316,6 +316,10 @@ struct TimelineCommands: Commands {
     let dateJump: DateJumpRequest
 
     var body: some Commands {
+        // Apple カレンダーと同じく、アプリのメニューの「設定…」の下に置く
+        CommandGroup(after: .appSettings) {
+            Button("アカウントを追加…") { AccountSetup.open() }
+        }
         CommandGroup(replacing: .newItem) {
             Button("クイック入力") { quickInputFocus.request() }
                 .keyboardShortcut("n")

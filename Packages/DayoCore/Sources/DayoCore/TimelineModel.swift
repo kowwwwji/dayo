@@ -107,6 +107,9 @@ public final class TimelineModel {
 
     /// 予定のカレンダーとリマインダーのリストの一覧。表示・非表示の切替に出す。
     public private(set) var calendars: [CalendarInfo] = []
+    /// 読み込んだカレンダーに、インターネットアカウントのものが 1 つも無い。アカウントの追加を案内する。
+    /// 読み込む前は分からないので false。
+    public private(set) var needsAccount = false
     /// 画面に出さないカレンダーとリスト（`CalendarInfo.id`）。保存は App が持つ。
     public private(set) var hiddenCalendarIDs: Set<String>
 
@@ -309,6 +312,7 @@ public final class TimelineModel {
     private func loadCalendars() async {
         if let loaded = try? await source.calendars() {
             calendars = loaded
+            needsAccount = !loaded.contains(where: \.isFromAccount)
         }
     }
 
