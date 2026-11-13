@@ -28,6 +28,18 @@ Apple の開発者登録をしていないので、その Mac だけで通用す
 ビルド済みの `Dayo.app` を別の Mac へコピーして使うこともできるが、公証を受けていないので macOS が起動を止める
 （「システム設定 → プライバシーとセキュリティ」で手で許可する）。その Mac でビルドするほうが手間が少ない。
 
+## 他の人に配る
+
+ソースは見せず、dmg だけを公開リポジトリ [kowwwwji/dayo-app](https://github.com/kowwwwji/dayo-app) の Releases に置く（使う人向けの説明もそちらの README）。
+
+```sh
+scripts/make-dmg.sh   # build/Dayo-<版>.dmg を作る
+gh release create v<版> build/Dayo-<版>.dmg --repo kowwwwji/dayo-app --title "Dayo <版>" --notes "<変更点>"
+```
+
+版を上げるときは `project.yml` の `MARKETING_VERSION` と `CURRENT_PROJECT_VERSION` を上げてから作る。
+公証を受けていないので、使う人は初回の起動を「システム設定 → プライバシーとセキュリティ」で許可する。
+
 ## iPhone に入れる
 
 無料の Apple ID（Personal Team）で署名して、つないだ iPhone へ入れる。最初に Xcode でその Apple ID にサインインし、
